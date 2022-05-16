@@ -1,0 +1,17 @@
+{
+  "name": "webhook-replay-harness",
+  "version": "0.0.0",
+  "description": "Replay captured webhooks through a local handler with deterministic fixtures.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edilec/webhook-replay-harness"
+  }
+}
