@@ -1,0 +1,29 @@
+{
+  "receiver": {
+    "id": "orders-receiver",
+    "transport": "in-process",
+    "url": "http://127.0.0.1:8787/hooks/orders",
+    "defaultStatus": 200,
+    "dedupe": true,
+    "dedupeStatus": 200,
+    "script": [
+      { "event": "evt_order_updated", "statuses": [503, 200], "latencyMs": 12 }
+    ]
+  },
+  "allowedHosts": ["127.0.0.1"],
+  "ordering": "fixture",
+  "clock": { "startMs": 0 },
+  "delivery": { "maxAttempts": 3, "backoffMs": 250, "backoffFactor": 2, "maxBackoffMs": 5000 },
+  "eventsRoot": "events",
+  "events": [
+    { "id": "evt_order_created", "type": "order.created", "file": "order-created.json" },
+    { "id": "evt_order_updated", "type": "order.updated", "file": "order-updated.json" },
+    { "id": "evt_order_updated", "type": "order.updated", "file": "order-updated.json" },
+    {
+      "id": "evt_order_shipped",
+      "type": "order.shipped",
+      "target": "http://127.0.0.1:8787/hooks/orders",
+      "payload": { "orderId": "A-1041", "carrier": "in-house", "tracking": "none" }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "receiver": {
+    "id": "orders-receiver",
+    "transport": "in-process",
+    "url": "http://127.0.0.1:8787/hooks/orders",
+    "defaultStatus": 200,
+    "dedupe": false,
+    "script": [
+      { "event": "evt_flaky", "statuses": [500, 500, 503] },
+      { "event": "evt_gone", "statuses": [410] }
+    ]
+  },
+  "allowedHosts": ["127.0.0.1"],
+  "delivery": { "maxAttempts": 3, "backoffMs": 200, "backoffFactor": 3, "maxBackoffMs": 5000 },
+  "events": [
+    {
+      "id": "evt_external",
+      "type": "order.created",
+      "target": "https://hooks.example.com/inbound",
+      "payload": { "orderId": "A-2001" }
+    },
+    {
+      "id": "evt_other_port",
+      "type": "order.created",
+      "target": "http://127.0.0.1:9999/hooks/orders",
+      "payload": { "orderId": "A-2002" }
+    },
+    {
+      "id": "evt_bad_scheme",
+      "type": "order.created",
+      "target": "ftp://127.0.0.1/hooks/orders",
+      "payload": { "orderId": "A-2003" }
+    },
+    {
+      "id": "evt_signed",
+      "type": "order.created",
+      "headers": { "Content-Type": "application/json", "X-Hub-Signature-256": "sha256=REDACTED" },
+      "payload": { "orderId": "A-2004" }
+    },
+    { "id": "evt_flaky", "type": "order.updated", "payload": { "orderId": "A-2005" } },
+    { "id": "evt_gone", "type": "order.deleted", "payload": { "orderId": "A-2006" } },
+    { "id": "evt_repeat", "type": "order.created", "payload": { "orderId": "A-2007" } },
+    { "id": "evt_repeat", "type": "order.created", "payload": { "orderId": "A-2007" } }
+  ]
+}
