@@ -10,10 +10,10 @@
 /**
  * Order by UTF-16 code unit.
  *
- * Not `localeCompare`, and not `Intl.Collator`: both depend on the ICU data
- * compiled into whatever Node build happens to run, and both produce the same
- * drift. `Z` must precede `a`, `a-b` must precede `a_b`, and `README` must
- * precede `assets`, on every machine, for ever.
+ * Never a locale-aware comparison, under any of its spellings: collation
+ * depends on the ICU data compiled into whatever Node build happens to run, and
+ * every spelling of it drifts the same way. `Z` must precede `a`, `a-b` must
+ * precede `a_b`, and `README` must precede `assets`, on every machine, for ever.
  */
 export function byCodeUnit(left, right) {
   if (left === right) return 0

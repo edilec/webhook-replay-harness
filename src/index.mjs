@@ -7,12 +7,15 @@
  * Three properties are structural rather than incidental:
  *
  * 1. **A delivery never leaves this machine.** The receiver is a function call,
- *    not a socket. This package imports no `node:net`, `node:http`,
- *    `node:https`, `node:dns`, `node:tls` or `node:dgram`, calls no `fetch`,
- *    and spawns no process, so there is no code path a fixture could steer
- *    towards a network. A fixture naming an external URL, a non-loopback host,
- *    or any endpoint other than the declared receiver is refused *before* any
- *    attempt is constructed, and the refusal is an error that fails the run.
+ *    not a socket. This package imports no socket, HTTP, datagram, resolver or
+ *    TLS module from the platform, invokes no fetch primitive, and spawns no
+ *    process, so there is no code path a fixture could steer towards a network.
+ *    `test/no-network.test.mjs` proves it the direct way: it opens a real
+ *    listener on a real loopback port, declares that port as the receiver, and
+ *    asserts the listener saw no connection. A fixture naming an external URL,
+ *    a non-loopback host, or any endpoint other than the declared receiver is
+ *    refused *before* any attempt is constructed, and that refusal is an error
+ *    that fails the run.
  * 2. **Time is virtual.** Retries and backoff advance an injected clock. No
  *    timer is ever set and no run ever sleeps, so a fixture with an hour of
  *    backoff replays instantly and the timestamps in the report are a function
@@ -571,6 +574,23 @@ export async function replayPlan(rawPlan, options = {}) {
 
     counts.checked += 1
 
+    /**
+     * A repeat id that the receiver actually processed again, whatever it then
+     * answered. The hazard is the second processing, not the status it
+     * returned, so this is reported for a rejected or exhausted redelivery too
+     * -- a receiver that reprocesses a duplicate and then fails it has still
+     * reprocessed it.
+     */
+    if (repeat && outcome !== 'deduplicated') {
+      record(collector, {
+        pointer: event.pointer,
+        ruleId: 'duplicate-event-id-redelivered',
+        message: `Event id "${sanitize(event.id, 80)}" reached the receiver a second time and was not deduplicated, so the same event was processed twice.`,
+        evidence: `outcome ${outcome}, final status ${finalStatus}, receiver dedupe ${plan.receiver.dedupe ? 'on' : 'off'}`,
+        suggestion: 'Turn on receiver dedupe, or give the redelivery its own id if it really is a different event.',
+      })
+    }
+
     if (outcome === 'delivered') {
       counts.delivered += 1
       if (attempt > 1) {
@@ -579,15 +599,6 @@ export async function replayPlan(rawPlan, options = {}) {
           ruleId: 'delivery-retried',
           message: `Event "${sanitize(event.id, 80)}" was accepted on attempt ${attempt} of ${plan.delivery.maxAttempts}, after ${attempt - 1} retry(s) under virtual time.`,
           evidence: `final status ${finalStatus} at ${delivery.lastAttemptAtMs}ms`,
-        })
-      }
-      if (repeat) {
-        record(collector, {
-          pointer: event.pointer,
-          ruleId: 'duplicate-event-id-redelivered',
-          message: `Event id "${sanitize(event.id, 80)}" was delivered more than once and the receiver did not deduplicate it, so the same event was processed twice.`,
-          evidence: `final status ${finalStatus}, receiver dedupe ${plan.receiver.dedupe ? 'on' : 'off'}`,
-          suggestion: 'Turn on receiver dedupe, or give the redelivery its own id if it really is a different event.',
         })
       }
     } else if (outcome === 'deduplicated') {

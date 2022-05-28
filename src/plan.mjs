@@ -90,6 +90,8 @@ const MAX_ID_LENGTH = 200
 const MIN_STATUS = 100
 const MAX_STATUS = 599
 const MAX_BACKOFF_FACTOR = 10
+/** A virtual clock may start at a real epoch timestamp; it is never read from one. */
+const MAX_CLOCK_START = 8640000000000
 
 export function isRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -314,7 +316,7 @@ export function validatePlan(raw, options) {
     if (!isRecord(raw.clock)) sink.invalid('/clock', '"clock" must be an object.')
     else {
       checkKeys(raw.clock, CLOCK_KEYS, '/clock', sink)
-      startMs = readInteger(raw.clock, 'startMs', '/clock', sink, { min: 0, max: HARD_LIMITS.maxVirtualMs, fallback: 0 })
+      startMs = readInteger(raw.clock, 'startMs', '/clock', sink, { min: 0, max: MAX_CLOCK_START, fallback: 0 })
     }
   }
 
@@ -328,9 +330,9 @@ export function validatePlan(raw, options) {
         max: limits.maxAttemptsPerEvent,
         fallback: Math.min(DEFAULT_DELIVERY.maxAttempts, limits.maxAttemptsPerEvent),
       })
-      delivery.backoffMs = readInteger(raw.delivery, 'backoffMs', '/delivery', sink, { min: 0, max: limits.maxVirtualMs, fallback: DEFAULT_DELIVERY.backoffMs })
+      delivery.backoffMs = readInteger(raw.delivery, 'backoffMs', '/delivery', sink, { min: 0, max: HARD_LIMITS.maxVirtualMs, fallback: DEFAULT_DELIVERY.backoffMs })
       delivery.backoffFactor = readInteger(raw.delivery, 'backoffFactor', '/delivery', sink, { min: 1, max: MAX_BACKOFF_FACTOR, fallback: DEFAULT_DELIVERY.backoffFactor })
-      delivery.maxBackoffMs = readInteger(raw.delivery, 'maxBackoffMs', '/delivery', sink, { min: 0, max: limits.maxVirtualMs, fallback: DEFAULT_DELIVERY.maxBackoffMs })
+      delivery.maxBackoffMs = readInteger(raw.delivery, 'maxBackoffMs', '/delivery', sink, { min: 0, max: HARD_LIMITS.maxVirtualMs, fallback: DEFAULT_DELIVERY.maxBackoffMs })
     }
   }
 
@@ -422,7 +424,7 @@ function validateReceiver(raw, allowedHosts, limits, sink) {
 
   const defaultStatus = readInteger(raw, 'defaultStatus', '/receiver', sink, { min: MIN_STATUS, max: MAX_STATUS, fallback: 200 })
   const dedupeStatus = readInteger(raw, 'dedupeStatus', '/receiver', sink, { min: MIN_STATUS, max: MAX_STATUS, fallback: 200 })
-  const latencyMs = readInteger(raw, 'latencyMs', '/receiver', sink, { min: 0, max: limits.maxVirtualMs, fallback: 0 })
+  const latencyMs = readInteger(raw, 'latencyMs', '/receiver', sink, { min: 0, max: HARD_LIMITS.maxVirtualMs, fallback: 0 })
   const dedupe = readBoolean(raw, 'dedupe', '/receiver', sink, true)
 
   const script = []
@@ -443,7 +445,7 @@ function validateReceiver(raw, allowedHosts, limits, sink) {
         }
         checkKeys(rule, SCRIPT_KEYS, pointer, sink)
         const event = readString(rule, 'event', pointer, sink, { required: true })
-        const ruleLatency = readInteger(rule, 'latencyMs', pointer, sink, { min: 0, max: limits.maxVirtualMs, fallback: latencyMs ?? 0 })
+        const ruleLatency = readInteger(rule, 'latencyMs', pointer, sink, { min: 0, max: HARD_LIMITS.maxVirtualMs, fallback: latencyMs ?? 0 })
         let statuses = null
         if (!Array.isArray(rule.statuses) || rule.statuses.length === 0) {
           sink.invalid(`${pointer}/statuses`, '"statuses" must be a non-empty array of HTTP status codes.')

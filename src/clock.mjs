@@ -1,8 +1,8 @@
 /**
  * webhook-replay-harness -- virtual time.
  *
- * Retries and backoff advance this clock. They never call `setTimeout`, never
- * read `Date.now`, and never sleep. Two consequences, both of them the point:
+ * Retries and backoff advance this clock. Nothing here schedules a host timer,
+ * reads a wall clock, or sleeps. Two consequences, both of them the point:
  *
  * 1. A replay of a fixture with a ten-minute backoff finishes instantly, so a
  *    test suite can assert on the timing of the fourth retry without waiting
@@ -56,9 +56,6 @@ export function createVirtualClock(startMs = 0) {
 export function backoffDelayMs(attempt, { backoffMs, backoffFactor, maxBackoffMs }) {
   if (!Number.isInteger(attempt) || attempt < 1) throw new TypeError('Attempt must be a positive integer')
   let delay = backoffMs
-  for (let step = 1; step < attempt; step += 1) {
-    delay *= backoffFactor
-    if (delay >= maxBackoffMs) return maxBackoffMs
-  }
+  for (let step = 1; step < attempt; step += 1) delay *= backoffFactor
   return delay > maxBackoffMs ? maxBackoffMs : delay
 }
