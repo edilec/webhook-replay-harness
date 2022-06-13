@@ -172,6 +172,53 @@ test('ordering, allowedHosts and statuses are validated rather than coerced', as
   }
 })
 
+/**
+ * The structural bounds, each documented in docs/replay-rules.md. A documented
+ * limit that is never enforced is one of the defects this catalog keeps
+ * finding, so each one is driven past its edge here.
+ */
+test('every documented structural bound is enforced', async () => {
+  const cases = [
+    ['allowedHosts entries', plan({ allowedHosts: Array.from({ length: 17 }, () => '127.0.0.1') }), '/allowedHosts'],
+    [
+      'script rules',
+      plan({ receiver: { id: 'orders', url: RECEIVER_URL, script: Array.from({ length: 1001 }, () => ({ event: 'evt_1', statuses: [200] })) } }),
+      '/receiver/script',
+    ],
+    [
+      'statuses per rule',
+      plan({ receiver: { id: 'orders', url: RECEIVER_URL, script: [{ event: 'evt_1', statuses: Array.from({ length: 33 }, () => 200) }] } }),
+      '/receiver/script/0/statuses',
+    ],
+    [
+      'headers per event',
+      plan({ events: [{ id: 'evt_1', payload: {}, headers: Object.fromEntries(Array.from({ length: 33 }, (_, index) => [`x-h-${index}`, 'v'])) }] }),
+      '/events/0/headers',
+    ],
+    ['id length', plan({ events: [{ id: 'e'.repeat(201), payload: {} }] }), '/events/0/id'],
+    ['type length', plan({ events: [{ id: 'evt_1', type: 't'.repeat(201), payload: {} }] }), '/events/0/type'],
+    ['receiver name length', plan({ receiver: { id: 'r'.repeat(201), url: RECEIVER_URL } }), '/receiver/id'],
+    ['declared path length', plan({ eventsRoot: 'e'.repeat(401), events: [{ id: 'evt_1', payload: {} }] }), '/eventsRoot'],
+  ]
+
+  for (const [name, body, pointer] of cases) {
+    const report = await replayPlan(body)
+    assert.equal(report.findings.some((finding) => finding.location.pointer === pointer), true, `the ${name} bound must be enforced at ${pointer}`)
+    assert.equal(report.status, 'incomplete')
+    assert.equal(report.summary.checked, 0)
+  }
+})
+
+test('a bound is enforced at its edge and not one step before it', async () => {
+  const justInside = await replayPlan(plan({
+    events: [{ id: 'e'.repeat(200), type: 't'.repeat(200), payload: {}, headers: Object.fromEntries(Array.from({ length: 32 }, (_, index) => [`x-h-${index}`, 'v'])) }],
+    allowedHosts: ['127.0.0.1', '::1', 'localhost'],
+  }))
+
+  assert.deepEqual(justInside.findings, [], 'a plan sitting exactly on the documented bounds is valid')
+  assert.equal(justInside.status, 'pass')
+})
+
 test('loopback is decided on the literal host text, never by resolving it', () => {
   for (const host of ['127.0.0.1', '127.0.0.2', '127.1.2.3', 'localhost', 'LOCALHOST', '::1', '[::1]']) {
     assert.equal(isLoopbackHost(host), true, `${host} names this machine`)
@@ -203,6 +250,11 @@ test('the API refuses an unknown option or an impossible clock request', async (
     () => replayPlan(plan(), { clock: { startMs: 0, now: () => 0, advance: () => 0, elapsedMs: () => 0 }, startMs: 5 }),
     TypeError,
   )
+  // A clock is the one piece of machinery a caller can replace, so a
+  // half-built one is refused up front rather than discovered mid-replay.
+  await assert.rejects(() => replayPlan(plan(), { clock: {} }), TypeError)
+  await assert.rejects(() => replayPlan(plan(), { clock: { startMs: 0, now: () => 0 } }), TypeError)
+  await assert.rejects(() => replayPlan(plan(), { clock: { startMs: 1.5, now: () => 0, advance: () => 0, elapsedMs: () => 0 } }), TypeError)
 })
 
 test('a plan that is not an object at all is reported rather than thrown', async () => {

@@ -356,7 +356,7 @@ export function validatePlan(raw, options) {
   const eventsRoot = Object.hasOwn(raw, 'eventsRoot') ? readRelativePath(raw, 'eventsRoot', '', sink) : null
 
   const receiver = validateReceiver(raw.receiver, allowedHosts ?? [], limits, sink)
-  const events = validateEvents(raw.events, { eventsRoot, sink, limits })
+  const events = validateEvents(raw.events, { eventsRoot, sink })
 
   if (receiver !== null && events !== null) {
     const declared = new Set(events.map((event) => event.id))
@@ -478,7 +478,7 @@ function validateReceiver(raw, allowedHosts, limits, sink) {
   }
 }
 
-function validateEvents(raw, { eventsRoot, sink, limits }) {
+function validateEvents(raw, { eventsRoot, sink }) {
   if (!Array.isArray(raw)) {
     sink.invalid('/events', '"events" is required and must be an array of event fixtures.')
     return null
@@ -549,13 +549,6 @@ function validateEvents(raw, { eventsRoot, sink, limits }) {
       fileLabel: file === null ? null : joinRelative(eventsRoot ?? '', file),
     })
   })
-
-  if (raw.length > limits.maxEvents * 4 && raw.length > HARD_LIMITS.maxEvents) {
-    // The plan itself is bounded by the CLI byte limit; this only stops a
-    // pathological in-memory plan handed straight to the API.
-    sink.invalid('/events', `"events" holds ${raw.length} entries, beyond the hard cap of ${HARD_LIMITS.maxEvents}.`)
-    bad = true
-  }
 
   return bad ? null : events
 }

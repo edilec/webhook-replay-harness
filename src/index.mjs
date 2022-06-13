@@ -182,7 +182,7 @@ async function resolveEventsRoot(collector, baseDir, eventsRoot) {
  * evidence nobody obtained, which makes the run incomplete instead.
  */
 async function loadEventFile(collector, event, rootReal, limits) {
-  if (rootReal === null) return { ok: false, outcome: 'skipped', silent: true }
+  if (rootReal === null) return { ok: false, outcome: 'skipped' }
 
   const absolute = resolve(rootReal, event.file)
   let real
@@ -372,6 +372,17 @@ export async function replayPlan(rawPlan, options = {}) {
   if (options.clock !== undefined && options.startMs !== undefined) {
     throw new TypeError('Pass either a clock or a startMs, not both')
   }
+  if (options.clock !== undefined) {
+    // An injected clock is the one piece of machinery a caller can replace, so
+    // its shape is checked here rather than discovered halfway through a replay.
+    const { clock } = options
+    const shaped = isRecord(clock)
+      && Number.isInteger(clock.startMs)
+      && typeof clock.now === 'function'
+      && typeof clock.advance === 'function'
+      && typeof clock.elapsedMs === 'function'
+    if (!shaped) throw new TypeError('An injected clock must expose an integer startMs and now(), advance() and elapsedMs() functions')
+  }
   if (options.label !== undefined && (typeof options.label !== 'string' || options.label.trim() === '')) {
     throw new TypeError('Label must be a non-empty string')
   }
@@ -439,7 +450,7 @@ export async function replayPlan(rawPlan, options = {}) {
     const delivery = {
       order,
       eventId: sanitize(event.id, 200),
-      type: event.type === null ? null : sanitize(event.type, 120),
+      type: event.type === null ? null : sanitize(event.type, 200),
       source: event.fileLabel === null ? 'inline' : sanitize(event.fileLabel, 200),
       outcome: 'skipped',
       attempts: 0,

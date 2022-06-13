@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
@@ -218,4 +218,27 @@ test('every rule that decides pass or fail by severity alone is pinned above', (
     Object.entries(RULE_SEVERITY).filter(([, severity]) => severity !== 'error').map(([ruleId]) => ruleId).sort(),
     PASSING.map((item) => item.ruleId).sort(),
   )
+})
+
+/**
+ * A secondary guard, and only that.
+ *
+ * Everything above is what actually pins severity: a table, a document and a
+ * test map can be edited together, and an exit code cannot. This last test
+ * catches a different and much duller failure -- the catalog quietly going out
+ * of date -- so that a reader of the documentation is told the truth about what
+ * a rule will do to their build.
+ */
+test('the documented catalog and the table agree, in both directions', async () => {
+  const catalog = await readFile(join(projectDirectory, 'docs/replay-rules.md'), 'utf8')
+  const documented = new Map()
+  for (const row of catalog.matchAll(/^\| `([a-z0-9-]+)` \| `(error|warning|info)` \|/gm)) {
+    assert.equal(documented.has(row[1]), false, `${row[1]} is documented twice`)
+    documented.set(row[1], row[2])
+  }
+
+  assert.deepEqual([...documented.keys()].sort(), Object.keys(RULE_SEVERITY).sort())
+  for (const [ruleId, severity] of documented) {
+    assert.equal(RULE_SEVERITY[ruleId], severity, `docs/replay-rules.md says ${ruleId} is ${severity}`)
+  }
 })
