@@ -216,7 +216,39 @@ test('a fixture file that cannot be read, decoded or parsed makes the run incomp
       assert.equal(report.status, 'incomplete', 'evidence nobody obtained is never a verdict')
       assert.equal(report.summary.checked, 1)
       assert.equal(report.summary.skipped, 1)
+      assert.equal(report.findings[0].evidence, `events/${file}`, 'the fixture is named by its declared relative path')
+      assert.equal(report.findings[0].location.file, 'plan.json', 'and the location still names the plan the pointer points into')
+      assert.equal(JSON.stringify(report).includes(base), false, 'no resolved host path reaches the report')
     }
+  })
+})
+
+/**
+ * The fixture-file bound is measured on the bytes on disk, before the file is
+ * read -- which is the whole point of having it. A body whose *serialized* form
+ * is small can still be an enormous file, and reading that file into memory to
+ * discover it was small is the failure the limit exists to prevent.
+ */
+test('an oversized fixture file is refused on its bytes, before it is read', async () => {
+  await withBase(async (base) => {
+    await mkdir(join(base, 'events'))
+    const padded = `{"a":1}${' '.repeat(400)}`
+    await writeFile(join(base, 'events', 'padded.json'), padded)
+
+    const report = await replayPlan(
+      plan({
+        eventsRoot: 'events',
+        events: [{ id: 'evt_ok', payload: {} }, { id: 'evt_padded', file: 'padded.json' }],
+      }),
+      { baseDir: base, limits: { maxPayloadBytes: 64 } },
+    )
+
+    assert.deepEqual(raised(report), ['limit-payload-bytes-exceeded'])
+    assert.equal(report.findings[0].location.pointer, '/events/1/file')
+    assert.equal(report.findings[0].message.includes(`${padded.length} bytes`), true, 'measured on the file, not on the value it parses to')
+    assert.equal(report.status, 'incomplete')
+    assert.equal(report.summary.skipped, 1)
+    assert.equal(report.summary.checked, 1)
   })
 })
 

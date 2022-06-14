@@ -195,9 +195,13 @@ A delivery's `outcome` is one of `delivered`, `deduplicated`, `refused`, `reject
 `skipped`.
 
 Findings sort by `location.file`, then `location.pointer`, then `ruleId`, then `message`, then
-`evidence` — every comparison by UTF-16 code unit. `location.file` is the plan label, or the
-fixture's path relative to the plan when the body came from a file. It is never an absolute host
-path.
+`evidence` — every comparison by UTF-16 code unit.
+
+`location.file` is the plan label: the `--plan` value exactly as written, or `--label` when that is
+given. `location.pointer` is a JSON Pointer into the plan, so the two always name the same document.
+A finding about a fixture file names that file by its **declared relative path** in `evidence`, and
+`replay.deliveries[].source` records it too. No resolved host path reaches the report from anywhere:
+the only absolute path a report can carry is one the caller passed to `--plan` itself.
 
 ## Exit codes
 
