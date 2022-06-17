@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import test from 'node:test'
 
-import { createVirtualClock, replayPlan } from '../src/index.mjs'
+import { createVirtualClock, isInside, replayPlan } from '../src/index.mjs'
 
 const RECEIVER_URL = 'http://127.0.0.1:8787/hooks/orders'
 
@@ -190,6 +190,78 @@ test('a symlink out of the events root is refused unread, and its contents stay 
     assert.equal(report.status, 'fail')
     assert.equal(JSON.stringify(report).includes('OUTSIDE_CONTENT_MARKER'), false)
     assert.equal(report.summary.attempts, 0)
+  })
+})
+
+/**
+ * The containment predicate itself, at both of its edges.
+ *
+ * The behavioural test below drives the interesting edge through a real replay.
+ * These two cannot be reached that way -- `realpath` never hands back a root
+ * with a trailing separator except for the filesystem root, and a fixture that
+ * resolves to the root directory itself fails on the read rather than on the
+ * containment check -- so they are pinned here, on the exported predicate.
+ */
+test('containment holds at a separator, and a root that already ends in one gains no second one', () => {
+  const root = ['', 'srv', 'fixtures', 'events'].join(sep)
+
+  assert.equal(isInside(root, [root, 'order.json'].join(sep)), true)
+  assert.equal(isInside(root, [root, 'nested', 'order.json'].join(sep)), true)
+  assert.equal(isInside(root, root), true, 'the root is inside itself')
+  assert.equal(isInside(root, `${root}-outside${sep}secret.json`), false, 'a shared prefix is not containment')
+  assert.equal(isInside(root, `${root}.bak`), false)
+  assert.equal(isInside(sep, `${sep}srv${sep}order.json`), true, 'the filesystem root ends in a separator already')
+  assert.equal(isInside(sep, sep), true)
+})
+
+/**
+ * Containment is decided at a path separator, not at a prefix.
+ *
+ * `events-outside` begins with the six characters of `events`, so a containment
+ * test written as a bare `startsWith` accepts everything in it -- and the
+ * escape below is then read, replayed and reported as a pass. The sibling in
+ * the test above it is named `outside`, which shares no prefix with the root
+ * and so never exercises the boundary at all.
+ */
+test('a sibling directory whose name merely begins with the root name is still outside it', async () => {
+  await withBase(async (base) => {
+    await mkdir(join(base, 'events'))
+    await mkdir(join(base, 'events-outside'))
+    await writeFile(join(base, 'events-outside', 'secret.json'), JSON.stringify({ marker: 'SIBLING_ESCAPE_MARKER' }))
+    await symlink(join(base, 'events-outside', 'secret.json'), join(base, 'events', 'escape.json'))
+
+    const report = await replayPlan(
+      plan({ eventsRoot: 'events', events: [{ id: 'evt_1', file: 'escape.json' }] }),
+      { baseDir: base },
+    )
+
+    assert.deepEqual(raised(report), ['event-file-outside-root'])
+    assert.equal(report.status, 'fail')
+    assert.equal(report.replay.deliveries[0].outcome, 'refused')
+    assert.equal(report.summary.delivered, 0)
+    assert.equal(report.summary.refused, 1)
+    assert.equal(report.summary.attempts, 0)
+    assert.equal(JSON.stringify(report).includes('SIBLING_ESCAPE_MARKER'), false)
+  })
+})
+
+/**
+ * And the over-correction, which is a bug too: a root spelled with a trailing
+ * separator still holds the fixtures inside it.
+ */
+test('a fixture inside a root spelled with a trailing separator is still replayed', async () => {
+  await withBase(async (base) => {
+    await mkdir(join(base, 'events'))
+    await writeFile(join(base, 'events', 'order.json'), JSON.stringify({ orderId: 'A-2' }))
+
+    const report = await replayPlan(
+      plan({ eventsRoot: 'events/', events: [{ id: 'evt_1', file: 'order.json' }] }),
+      { baseDir: base },
+    )
+
+    assert.deepEqual(report.findings, [])
+    assert.equal(report.status, 'pass')
+    assert.equal(report.replay.deliveries[0].outcome, 'delivered')
   })
 })
 
