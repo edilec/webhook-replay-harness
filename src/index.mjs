@@ -210,34 +210,30 @@ async function loadEventFile(collector, event, rootReal, limits) {
     return { ok: false, outcome: 'refused' }
   }
 
-  let info
-  try {
-    info = await stat(real)
-  } catch (error) {
-    record(collector, {
-      pointer: `${event.pointer}/file`,
-      ruleId: 'event-file-unreadable',
-      message: `Fixture file could not be read: ${error.code ?? 'unknown error'}. Event "${sanitize(event.id, 80)}" was not replayed.`,
-      evidence: sanitize(event.fileLabel, 120),
-    })
-    collector.incomplete = true
-    return { ok: false, outcome: 'skipped' }
-  }
-
-  if (info.size > limits.maxPayloadBytes) {
-    record(collector, {
-      pointer: `${event.pointer}/file`,
-      ruleId: 'limit-payload-bytes-exceeded',
-      message: `Fixture file is ${info.size} bytes, above the maxPayloadBytes limit of ${limits.maxPayloadBytes}; event "${sanitize(event.id, 80)}" was not replayed and was not truncated.`,
-      evidence: sanitize(event.fileLabel, 120),
-      suggestion: 'Raise limits.maxPayloadBytes, or shrink the fixture.',
-    })
-    collector.incomplete = true
-    return { ok: false, outcome: 'skipped' }
-  }
-
+  /**
+   * Size first, then the bytes, under one failure handler.
+   *
+   * The size is read from the filesystem rather than from the parsed body on
+   * purpose: a body whose serialized form is small can still be an enormous
+   * file, and reading that file in to discover it was small is the failure this
+   * limit exists to prevent. Both calls fail the same way and are reported the
+   * same way, so they share a handler rather than each carrying a copy of it --
+   * a second copy that no fixture can reach is a branch nothing pins.
+   */
   let bytes
   try {
+    const info = await stat(real)
+    if (info.size > limits.maxPayloadBytes) {
+      record(collector, {
+        pointer: `${event.pointer}/file`,
+        ruleId: 'limit-payload-bytes-exceeded',
+        message: `Fixture file is ${info.size} bytes, above the maxPayloadBytes limit of ${limits.maxPayloadBytes}; event "${sanitize(event.id, 80)}" was not replayed and was not truncated.`,
+        evidence: sanitize(event.fileLabel, 120),
+        suggestion: 'Raise limits.maxPayloadBytes, or shrink the fixture.',
+      })
+      collector.incomplete = true
+      return { ok: false, outcome: 'skipped' }
+    }
     bytes = await readFile(real)
   } catch (error) {
     record(collector, {

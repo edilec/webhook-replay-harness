@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "lint": "node --check src/index.mjs && node --check src/plan.mjs && node --check src/receiver.mjs && node --check src/rules.mjs && node --check src/clock.mjs && node --check src/text.mjs && node --check bin/webhook-replay-harness.mjs && node --check test/text.test.mjs && node --check test/clock.test.mjs && node --check test/receiver.test.mjs && node --check test/plan.test.mjs && node --check test/replay.test.mjs && node --check test/severity-exit.test.mjs && node --check test/incomplete-severity.test.mjs && node --check test/determinism.test.mjs && node --check test/no-network.test.mjs && node --check test/sanitisation.test.mjs && node --check test/cli.test.mjs",
+    "lint": "node --check src/index.mjs && node --check src/plan.mjs && node --check src/receiver.mjs && node --check src/rules.mjs && node --check src/clock.mjs && node --check src/text.mjs && node --check bin/webhook-replay-harness.mjs && node --check test/text.test.mjs && node --check test/clock.test.mjs && node --check test/receiver.test.mjs && node --check test/plan.test.mjs && node --check test/replay.test.mjs && node --check test/severity-exit.test.mjs && node --check test/incomplete-severity.test.mjs && node --check test/incomplete-backstop.test.mjs && node --check test/determinism.test.mjs && node --check test/no-network.test.mjs && node --check test/sanitisation.test.mjs && node --check test/cli.test.mjs",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/**",
     "example": "node bin/webhook-replay-harness.mjs --plan examples/clean/plan.json",
