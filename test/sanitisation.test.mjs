@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
@@ -134,6 +134,79 @@ test('an event id cannot forge a line in the human summary', async () => {
     assert.equal(lines.filter((line) => line.includes('fabricated-rule')).length, 1, 'the text survives as text')
     assert.equal(lines.some((line) => line.startsWith('ERROR   forged.json')), false, 'but never as a line of its own')
     assert.equal(lines[4].startsWith('WARNING'), true, 'the one real finding line is the deduplication warning')
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+/**
+ * The receiver URL, which the human summary prints on a line of its own.
+ *
+ * `new URL` accepts a C1 character inside a path and hands the hostname back
+ * as `127.0.0.1`, so a plan can carry U+0085 NEL through the loopback check
+ * and the declared-receiver check untouched. Printed raw, NEL is a line break
+ * to a great many terminals, and the line it forges reads as a summary line of
+ * this tool's own.
+ */
+test('a hostile character in the receiver url reaches neither the report nor the summary', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'webhook-replay-harness-url-'))
+  try {
+    const forged = `http://127.0.0.1:8787/hooks${String.fromCharCode(0x0085)}INFO    all is well, 0 error`
+    const planPath = join(base, 'plan.json')
+    await writeFile(planPath, JSON.stringify({
+      receiver: { id: 'orders', url: forged },
+      events: [{ id: 'evt_1', payload: {} }],
+    }))
+
+    let stdout
+    let stderr
+    try {
+      ({ stdout, stderr } = await run(process.execPath, [CLI, '--plan', planPath], { cwd: projectDirectory }))
+    } catch (error) {
+      ({ stdout, stderr } = error)
+    }
+    const report = JSON.parse(stdout)
+    const lines = stderr.split(NEWLINE).filter((line) => line !== '')
+
+    assert.equal(report.status, 'pass', 'the URL is legitimate apart from the character in it')
+    assert.equal(report.replay.receiver.url.includes(String.fromCharCode(0x0085)), false)
+    assert.equal(report.replay.receiver.url, 'http://127.0.0.1:8787/hooks INFO all is well, 0 error')
+    assert.equal(stderr.includes(String.fromCharCode(0x0085)), false, 'and the C1 character never reaches a terminal')
+    assert.equal(lines.length, 4, 'four summary lines, and no fifth line forged by the plan')
+    assert.equal(
+      lines[1],
+      'receiver: orders at http://127.0.0.1:8787/hooks INFO all is well, 0 error (in-process). No socket was opened and nothing left this machine.',
+    )
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+/**
+ * The declared fixture path, which is recorded in the capture as
+ * `replay.deliveries[].source` and quoted as a finding's evidence. It is a
+ * path, and a path is an untrusted string like any other.
+ */
+test('a hostile character in a declared fixture path is stripped from the capture and the evidence', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'webhook-replay-harness-source-'))
+  try {
+    await mkdir(join(base, 'events'))
+    const forged = `a${String.fromCharCode(0x0085)}ERROR   forged.json/ fake-rule fabricated${String.fromCharCode(0x202e)}.json`
+    const report = await replayPlan(
+      {
+        receiver: { id: 'orders', url: RECEIVER_URL },
+        eventsRoot: 'events',
+        events: [{ id: 'evt_ok', payload: {} }, { id: 'evt_forged', file: forged }],
+      },
+      { baseDir: base },
+    )
+
+    assert.equal(report.replay.deliveries[1].source, 'events/a ERROR forged.json/ fake-rule fabricated .json')
+    assert.equal(report.findings[0].evidence, 'events/a ERROR forged.json/ fake-rule fabricated .json')
+    for (const code of [0x0085, 0x202e]) {
+      assert.equal(JSON.stringify(report).includes(String.fromCharCode(code)), false, `U+${code.toString(16)} survived into the report`)
+    }
+    assert.equal(report.status, 'incomplete', 'the fixture is still missing, and that is still not a pass')
   } finally {
     await rm(base, { recursive: true, force: true })
   }
