@@ -60,10 +60,11 @@ test('ordering by event id follows code units, through the real report path', as
 
 test('fixture ordering replays the declared order exactly, whatever the ids collate to', async () => {
   const declared = ['a', 'a_b', 'a-b', 'assets', 'README', 'Z']
+  assert.notDeepEqual(declared, CODE_UNIT_ORDER, 'the declared order must differ from the code-unit one, or this proves nothing')
+
   const report = await replayPlan(planWith(declared, { ordering: 'fixture' }))
 
   assert.deepEqual(report.replay.deliveries.map((item) => item.eventId), declared)
-  assert.notDeepEqual(report.replay.deliveries.map((item) => item.eventId), CODE_UNIT_ORDER)
 })
 
 test('the default ordering is the declared one, and it is recorded in the capture', async () => {

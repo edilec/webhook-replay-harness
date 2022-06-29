@@ -74,15 +74,12 @@ async function assertIncomplete({ code, stdout, stderr }, ruleId, errors) {
 
   assert.equal(code, 2, `${ruleId} must exit 2`)
   assert.equal(report.status, 'incomplete', `${ruleId} must make the run incomplete`)
-  assert.notEqual(report.status, 'pass')
   assert.equal(report.summary.errors, errors, `${ruleId} must count ${errors} error(s)`)
   assert.equal(report.findings.some((finding) => finding.ruleId === ruleId), true, `${ruleId} must be raised`)
 
   const printed = stderr.split(NEWLINE).filter((line) => line.includes(` ${ruleId} `))
   assert.equal(printed.length >= 1, true, `${ruleId} must appear in the human summary`)
   assert.equal(printed[0].startsWith('ERROR  '), true, `${ruleId} must print the severity word ERROR, not WARNING or INFO`)
-  assert.equal(printed[0].startsWith('WARNING'), false)
-  assert.equal(printed[0].startsWith('INFO'), false)
   assert.equal(stderr.includes('this is not a pass'), true)
 }
 

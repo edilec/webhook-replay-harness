@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import test from 'node:test'
 
-import { createVirtualClock, isInside, replayPlan } from '../src/index.mjs'
+import { createVirtualClock, exitCodeFor, isInside, replayPlan } from '../src/index.mjs'
 
 const RECEIVER_URL = 'http://127.0.0.1:8787/hooks/orders'
 
@@ -424,7 +424,7 @@ test('a run that reached a verdict on no event is incomplete, never a pass', asy
   assert.deepEqual(raised(empty), ['no-events-replayed'])
   assert.equal(empty.summary.checked, 0)
   assert.equal(empty.status, 'incomplete')
-  assert.notEqual(empty.status, 'pass')
+  assert.equal(exitCodeFor(empty), 2, 'and the process says so too')
 })
 
 test('a caller can inject its own clock and watch every advance', async () => {
