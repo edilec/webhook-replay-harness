@@ -2,7 +2,7 @@
 
 import process from 'node:process'
 
-import { exitCodeFor, formatReport, replayPlanFile, serializeReport } from '../src/index.mjs'
+import { MAX_CLOCK_START, exitCodeFor, formatReport, replayPlanFile, serializeReport } from '../src/index.mjs'
 
 const VERSION = '0.1.0'
 
@@ -28,6 +28,8 @@ Options:
                              (defaults to the --plan value as written)
   --json                     Suppress the human summary on stderr
   --start-ms N               Virtual clock start, overriding the plan's clock
+                             (0 to 8640000000000, the same bound the plan's
+                             clock.startMs is held to)
   --max-events N             Maximum events replayed (default 500)
   --max-attempts-per-event N Cap on delivery.maxAttempts (default 10)
   --max-total-attempts N     Maximum attempts across the run (default 5000)
@@ -106,6 +108,7 @@ function parseArguments(argv) {
       once('--start-ms')
       const raw = takeValue('--start-ms')
       if (!/^\d+$/.test(raw)) throw new Error('--start-ms requires a non-negative integer')
+      if (Number(raw) > MAX_CLOCK_START) throw new Error(`--start-ms must be no greater than ${MAX_CLOCK_START}`)
       options.startMs = Number(raw)
     } else if (LIMIT_FLAGS.has(argument)) {
       once(argument)

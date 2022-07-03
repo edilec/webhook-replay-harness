@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DEFAULT_LIMITS, HARD_LIMITS, applyLimits, classifyUrl, isLoopbackHost, normalizeHost, replayPlan } from '../src/index.mjs'
+import { DEFAULT_LIMITS, HARD_LIMITS, MAX_CLOCK_START, applyLimits, classifyUrl, isLoopbackHost, normalizeHost, replayPlan } from '../src/index.mjs'
 
 const RECEIVER_URL = 'http://127.0.0.1:8787/hooks/orders'
 
@@ -147,12 +147,31 @@ test('an event declares one body, and a file needs a root to live in', async () 
   assert.equal(absolute.findings.some((finding) => finding.location.pointer === '/eventsRoot'), true)
 })
 
-test('delivery.maxAttempts is bounded by the maxAttemptsPerEvent limit', async () => {
+test('delivery.maxAttempts is bounded by the maxAttemptsPerEvent limit, which the message names', async () => {
   const report = await replayPlan(plan({ delivery: { maxAttempts: 4 } }), { limits: { maxAttemptsPerEvent: 3 } })
 
   const finding = report.findings.find((item) => item.location.pointer === '/delivery/maxAttempts')
   assert.notEqual(finding, undefined)
+  assert.equal(finding.message, '"maxAttempts" must be an integer between 1 and 3. The upper bound is the maxAttemptsPerEvent limit.')
   assert.equal(report.status, 'incomplete')
+})
+
+/**
+ * The clock start is bounded in the plan, so it is bounded everywhere: a
+ * caller that can spell past a limit the plan file cannot is not a limit.
+ */
+test('the clock start is bounded at the same value from the plan and from the API', async () => {
+  const above = await replayPlan(plan({ clock: { startMs: MAX_CLOCK_START + 1 } }))
+  assert.equal(above.findings.some((finding) => finding.location.pointer === '/clock/startMs'), true)
+  assert.equal(above.status, 'incomplete')
+
+  const atEdge = await replayPlan(plan({ clock: { startMs: MAX_CLOCK_START } }))
+  assert.deepEqual(atEdge.findings, [], 'the bound is enforced at its edge and not one step before it')
+  assert.equal(atEdge.replay.clock.startMs, MAX_CLOCK_START)
+
+  await assert.rejects(() => replayPlan(plan(), { startMs: MAX_CLOCK_START + 1 }), TypeError)
+  const option = await replayPlan(plan(), { startMs: MAX_CLOCK_START })
+  assert.equal(option.replay.clock.startMs, MAX_CLOCK_START)
 })
 
 test('ordering, allowedHosts and statuses are validated rather than coerced', async () => {

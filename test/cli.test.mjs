@@ -168,6 +168,19 @@ test('--start-ms is wired all the way through to the clock the replay uses', asy
   })
 })
 
+test('--start-ms is bounded by the same value the plan clock is', async () => {
+  await withPlan(cleanPlan(), async (planPath) => {
+    const above = await cli(['--plan', planPath, '--start-ms', '8640000000001', '--json'])
+    assert.equal(above.code, 2)
+    assert.equal(above.stdout, '', 'a configuration error never had a subject to report about')
+    assert.equal(above.stderr.includes('--start-ms must be no greater than 8640000000000'), true)
+
+    const atEdge = await cli(['--plan', planPath, '--start-ms', '8640000000000', '--json'])
+    assert.equal(atEdge.code, 0)
+    assert.equal(JSON.parse(atEdge.stdout).replay.clock.startMs, 8640000000000)
+  })
+})
+
 test('a limit flag is wired through and overrides the plan', async () => {
   await withPlan(
     cleanPlan({

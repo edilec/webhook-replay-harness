@@ -90,8 +90,15 @@ const MAX_ID_LENGTH = 200
 const MIN_STATUS = 100
 const MAX_STATUS = 599
 const MAX_BACKOFF_FACTOR = 10
-/** A virtual clock may start at a real epoch timestamp; it is never read from one. */
-const MAX_CLOCK_START = 8640000000000
+/**
+ * The highest virtual clock start, in milliseconds.
+ *
+ * A virtual clock may start at a real epoch timestamp -- it is never read from
+ * one -- so the bound is the largest date a JavaScript Date can represent. It
+ * applies to `clock.startMs` in the plan and to the `--start-ms` flag alike: a
+ * bound the plan enforces and the command line does not is not a bound.
+ */
+export const MAX_CLOCK_START = 8640000000000
 
 export function isRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -218,11 +225,19 @@ function checkKeys(record, allowed, pointer, sink) {
   return bad
 }
 
-function readInteger(record, key, pointer, sink, { min, max, fallback }) {
+/**
+ * `bound` names the limit that decided the upper end, when a limit did.
+ *
+ * A message that says only `"maxAttempts" must be an integer between 1 and 10`
+ * leaves the reader hunting for where the 10 came from; every bound this tool
+ * enforces is reported by the name it is configured under.
+ */
+function readInteger(record, key, pointer, sink, { min, max, fallback, bound }) {
   if (!Object.hasOwn(record, key)) return fallback
   const value = record[key]
   if (!Number.isInteger(value) || value < min || value > max) {
-    sink.invalid(`${pointer}/${key}`, `"${key}" must be an integer between ${min} and ${max}.`)
+    const named = bound === undefined ? '' : ` The upper bound is the ${bound} limit.`
+    sink.invalid(`${pointer}/${key}`, `"${key}" must be an integer between ${min} and ${max}.${named}`)
     return null
   }
   return value
@@ -254,7 +269,16 @@ function readString(record, key, pointer, sink, { maxLength = MAX_ID_LENGTH, req
   return value
 }
 
-/** A path a fixture may name: relative, and no parent traversal spelled in it. */
+/**
+ * A path a fixture may name: relative to the plan file, never absolute.
+ *
+ * A parent segment is permitted, and deliberately: fixture sets are routinely
+ * shared between plans in sibling directories, and `../fixtures` is the
+ * ordinary way to spell that. It is not the confinement boundary -- an event's
+ * `file` is resolved to its real path and checked against the real
+ * `eventsRoot`, which is where an escape is refused, `..` or no `..`. The root
+ * itself is the plan author's own declaration of where the fixtures live.
+ */
 function readRelativePath(record, key, pointer, sink) {
   const value = readString(record, key, pointer, sink, { maxLength: 400 })
   if (value === null || value === undefined) return value
@@ -329,6 +353,7 @@ export function validatePlan(raw, options) {
         min: 1,
         max: limits.maxAttemptsPerEvent,
         fallback: Math.min(DEFAULT_DELIVERY.maxAttempts, limits.maxAttemptsPerEvent),
+        bound: 'maxAttemptsPerEvent',
       })
       delivery.backoffMs = readInteger(raw.delivery, 'backoffMs', '/delivery', sink, { min: 0, max: HARD_LIMITS.maxVirtualMs, fallback: DEFAULT_DELIVERY.backoffMs })
       delivery.backoffFactor = readInteger(raw.delivery, 'backoffFactor', '/delivery', sink, { min: 1, max: MAX_BACKOFF_FACTOR, fallback: DEFAULT_DELIVERY.backoffFactor })

@@ -265,6 +265,41 @@ test('a fixture inside a root spelled with a trailing separator is still replaye
   })
 })
 
+/**
+ * A parent segment in a declared path is permitted, and the containment check
+ * is what decides an escape -- not the spelling.
+ *
+ * A fixture set shared by plans in sibling directories is spelled
+ * `../fixtures`, and refusing it would be a false refusal. The event's own
+ * `file` is still resolved against the real root, so `..` inside it escapes
+ * nothing.
+ */
+test('an events root may sit beside the plan directory, and a file may not climb out of it', async () => {
+  await withBase(async (base) => {
+    await mkdir(join(base, 'plans'))
+    await mkdir(join(base, 'fixtures'))
+    await writeFile(join(base, 'fixtures', 'order.json'), JSON.stringify({ orderId: 'A-3' }))
+    await writeFile(join(base, 'secret.json'), JSON.stringify({ marker: 'ABOVE_THE_ROOT_MARKER' }))
+    const baseDir = join(base, 'plans')
+
+    const shared = await replayPlan(
+      plan({ eventsRoot: '../fixtures', events: [{ id: 'evt_1', file: 'order.json' }] }),
+      { baseDir },
+    )
+    assert.deepEqual(shared.findings, [], 'refusing a fixture set beside the plan would be a false refusal')
+    assert.equal(shared.status, 'pass')
+    assert.equal(shared.replay.deliveries[0].source, '../fixtures/order.json')
+
+    const climbing = await replayPlan(
+      plan({ eventsRoot: '../fixtures', events: [{ id: 'evt_1', file: '../secret.json' }] }),
+      { baseDir },
+    )
+    assert.deepEqual(raised(climbing), ['event-file-outside-root'], 'the root is the boundary, whatever the path spells')
+    assert.equal(climbing.status, 'fail')
+    assert.equal(JSON.stringify(climbing).includes('ABOVE_THE_ROOT_MARKER'), false)
+  })
+})
+
 test('a fixture file that cannot be read, decoded or parsed makes the run incomplete', async () => {
   await withBase(async (base) => {
     await mkdir(join(base, 'events'))

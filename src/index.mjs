@@ -33,6 +33,7 @@ import { backoffDelayMs, createVirtualClock } from './clock.mjs'
 import {
   CREDENTIAL_HEADERS,
   DEFAULT_LIMITS,
+  MAX_CLOCK_START,
   applyLimits,
   classifyUrl,
   isRecord,
@@ -382,8 +383,10 @@ export async function replayPlan(rawPlan, options = {}) {
   if (options.label !== undefined && (typeof options.label !== 'string' || options.label.trim() === '')) {
     throw new TypeError('Label must be a non-empty string')
   }
-  if (options.startMs !== undefined && (!Number.isInteger(options.startMs) || options.startMs < 0)) {
-    throw new TypeError('startMs must be a non-negative integer')
+  // The same bound the plan's own clock.startMs is held to: a caller that can
+  // spell past a limit the plan file cannot is not a limit.
+  if (options.startMs !== undefined && (!Number.isInteger(options.startMs) || options.startMs < 0 || options.startMs > MAX_CLOCK_START)) {
+    throw new TypeError(`startMs must be an integer between 0 and ${MAX_CLOCK_START}`)
   }
   if (options.limits !== undefined) {
     const checked = applyLimits(DEFAULT_LIMITS, options.limits)
@@ -799,6 +802,7 @@ export {
   DEFAULT_DELIVERY,
   DEFAULT_LIMITS,
   HARD_LIMITS,
+  MAX_CLOCK_START,
   ORDERINGS,
   applyLimits,
   classifyUrl,
