@@ -33,7 +33,8 @@ host deliverable, because the loopback test is applied first and there is no way
 Retries and backoff advance an injected clock. Nothing schedules a host timer and no run sleeps, so a
 fixture with ninety minutes of backoff replays in under a millisecond and the timestamps in the
 report are a function of the fixture alone. The clock can be injected outright by an API caller, or
-started anywhere with `--start-ms`.
+started anywhere from 0 to 8640000000000 with `--start-ms` — the same bound the plan's own
+`clock.startMs` is held to, because a bound the command line can spell past is not a bound.
 
 ## Install
 
@@ -180,9 +181,13 @@ receiver.
   A green run means your fixtures drove that script the way you expected — not that the service
   behind that URL would answer the same way, or at all.
 - **It cannot verify a signature, and refuses to try.** A fixture carrying `Authorization`,
-  `Cookie`, `X-Hub-Signature`, `X-API-Key` or any other credential-bearing header is refused by
-  header name. This tool cannot tell a live token from a placeholder, and a fixture is meant to be
-  sanitized before it is stored anywhere. Strip the header; script the status you need instead.
+  `Cookie`, `X-Hub-Signature`, `X-API-Key` or any of the other names on a closed list of eleven is
+  refused by header name; the list is enumerated in
+  [`docs/replay-rules.md`](./docs/replay-rules.md#credential-headers). It is those eleven and no
+  others: a provider-specific header outside the list, such as `X-Gitlab-Token`, is delivered like
+  any ordinary header. This tool cannot tell a live token from a placeholder and it is not a secret
+  scanner — a fixture is meant to be sanitized before it is stored anywhere. Strip the header;
+  script the status you need instead.
 - **It proves nothing about your production retry behaviour.** The backoff is the arithmetic the
   plan declares, on a clock that only this tool advances. A real sender's jitter, connection
   timeouts, DNS failures and queue depth are all outside it.
@@ -197,9 +202,12 @@ receiver.
 - **`localhost` is accepted as the literal name it is.** No resolver is consulted — since no socket
   is opened, a hosts file pointing it elsewhere cannot turn a function call into a request.
 - **Nothing is written.** Fixtures are read-only and there is no auto-fix.
-- **A bound that was hit is not a smaller answer.** Every limit — events, attempts per event, total
-  attempts, payload bytes, payload nesting depth, virtual time, findings, and the 1 MiB plan file —
-  is reported by name and makes the run `incomplete`. It never truncates silently, and never passes.
+- **A bound that was hit is not a smaller answer.** Every limit — events, total attempts, payload
+  bytes, payload nesting depth, virtual time, findings, and the 1 MiB plan file — is reported by
+  name by a `limit-*` rule and makes the run `incomplete`. `maxAttemptsPerEvent` is reported one
+  step earlier: it bounds `delivery.maxAttempts` while the plan is validated, so exceeding it is
+  `plan-invalid` at `/delivery/maxAttempts` with the limit named in the message, and the run is
+  `incomplete` before a delivery is attempted. Nothing truncates silently, and no bound passes.
 - **A run that reached a verdict on no event is `incomplete`, never `pass`.** Green on no evidence is
   a defect, not a clean bill of health.
 
@@ -210,8 +218,29 @@ npm run check
 ```
 
 `check` runs `lint` (a syntax check of every shipped file), the full test suite, the clean example,
-and a packaging dry run. Every guarantee stated above has a test that fails when the guarantee is
-removed — the suite was verified by mutating each one in turn and watching it break.
+and a packaging dry run.
+
+The suite is maintained by mutation: each guarantee stated above is removed in turn and the failure
+watched, and a guarantee whose removal leaves the suite green is not a guarantee. Two of them are
+worth naming, because a test that only looks like it covers them is the usual outcome.
+
+- **Severity.** Every rule is flipped in the frozen table, in the catalog in
+  [`docs/replay-rules.md`](./docs/replay-rules.md) and in every list of expectations in the tests,
+  all at once. All 27 are caught by what the run then *does*:
+  [`test/severity-decides.test.mjs`](./test/severity-decides.test.mjs) and
+  [`test/incomplete-severity.test.mjs`](./test/incomplete-severity.test.mjs) import nothing from
+  `src/`, hold no table, and write every exit code, status, error count and printed severity word
+  out as a literal at the assertion that uses it.
+- **Ordering.** Every comparison is substituted with an English collator, one call site at a time.
+  The six that can change output — the replay order, the ids the receiver accepted, and the finding
+  key's file, pointer, message and evidence — are caught by fixtures whose collation order and
+  code-unit order disagree. Of the remaining six, two decide only the order findings are collected
+  in, which the sort that follows overwrites; the other four order rule ids, credential header
+  names, limit names and the two ordering modes — closed alphabets on which an English collator and
+  UTF-16 code units agree on all 856 ordered pairs, so substituting one for the other changes no
+  byte of any report. That enumeration is itself a test in
+  [`test/finding-order.test.mjs`](./test/finding-order.test.mjs), so a future name that does
+  disagree is reported rather than quietly unpinned.
 
 ## License
 

@@ -74,10 +74,10 @@ real failure came back green.
 | --- | --- | --- | --- |
 | `receiver` | object | — | **Required.** The one endpoint deliveries may reach. |
 | `events` | array | — | **Required.** The event fixtures, in declared order. |
-| `eventsRoot` | string | absent | Directory, relative to the plan file, holding fixture bodies. |
+| `eventsRoot` | string | absent | Directory, relative to the plan file, holding fixture bodies. A parent segment is permitted (`../fixtures` is the ordinary way to share one fixture set between sibling plans); every fixture inside it is still resolved to its real path and checked against the real root. |
 | `allowedHosts` | string[] | `["127.0.0.1", "::1", "localhost"]` | Hosts permitted **within** the loopback set. Narrows only. |
 | `ordering` | `"fixture"` or `"eventId"` | `"fixture"` | Replay order. `eventId` sorts by UTF-16 code unit, ties broken by declared order. |
-| `clock` | object | `{ "startMs": 0 }` | Where the virtual clock starts. |
+| `clock` | object | `{ "startMs": 0 }` | Where the virtual clock starts. `startMs` is an integer from 0 to 8640000000000 — the largest instant a `Date` can represent, since a virtual clock may start at a real epoch timestamp. `--start-ms` overrides it and is held to the same bound. |
 | `delivery` | object | see below | The retry policy. |
 | `limits` | object | see below | Bounds for this run. |
 
@@ -102,7 +102,7 @@ means "fail once, then accept for ever". A rule naming an event the plan does no
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `maxAttempts` | integer 1–`maxAttemptsPerEvent` | `3` | Attempts per event, the first included. |
+| `maxAttempts` | integer 1–`maxAttemptsPerEvent` | `3` | Attempts per event, the first included. Above the limit it is `plan-invalid` at `/delivery/maxAttempts`, and the message names `maxAttemptsPerEvent` as the bound that rejected it. |
 | `backoffMs` | integer >= 0 | `1000` | Delay before the second attempt. |
 | `backoffFactor` | integer 1–10 | `2` | Multiplier per further attempt. Integer, so the sequence is exact. |
 | `maxBackoffMs` | integer >= 0 | `60000` | Ceiling the sequence stops at. |
@@ -134,6 +134,11 @@ Refused by name, unconditionally: `authorization`, `cookie`, `proxy-authorizatio
 `x-amz-security-token`, `x-api-key`, `x-auth-token`, `x-hub-signature`, `x-hub-signature-256`,
 `x-signature`, `x-webhook-secret`.
 
+**That list is closed, and it is these eleven names.** A provider-specific credential header outside
+it — `x-gitlab-token`, `x-shopify-hmac-sha256`, and every other one a vendor invents — is treated as
+an ordinary header and delivered. This tool refuses the names it knows; it does not guess at the
+rest, and it is not a secret scanner. Sanitize the fixture before you store it.
+
 This tool cannot tell `Bearer REDACTED` from a live token, and guessing is the wrong behaviour for a
 file that is about to be committed to a repository. Strip the header from the fixture. If the
 receiver under test is supposed to reject an unsigned request, script the status it should answer
@@ -151,7 +156,14 @@ with instead.
 | `maxVirtualMs` | 3600000 | 604800000 |
 | `maxFindings` | 500 | 5000 |
 
-The plan file itself is bounded at 1 MiB, and that bound is not configurable.
+The plan file itself is bounded at 1 MiB, and the virtual clock start at 8640000000000. Neither is
+configurable.
+
+Seven of these limits are reported during the replay by a `limit-*` rule, which also marks the run
+`incomplete`. `maxAttemptsPerEvent` is the exception in form only: it bounds `delivery.maxAttempts`
+while the plan is validated, before anything is replayed, so it is reported as `plan-invalid` at
+`/delivery/maxAttempts` with the limit named in the message — and that also makes the run
+`incomplete`. No limit is ever applied silently.
 
 ### Structural bounds
 
