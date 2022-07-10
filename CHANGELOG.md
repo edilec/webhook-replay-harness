@@ -38,9 +38,12 @@ All notable changes to this project are documented in this file.
   byte source, the plan file included, so whether an input is decodable is the
   decoder's decision and never an inference drawn from the decoded text;
 - explicit bounds on events, attempts per event, total attempts, payload bytes,
-  payload nesting depth, virtual time, findings and the plan file itself, each
-  reported by name and each making the run `incomplete` rather than truncating
-  it quietly;
+  payload nesting depth, virtual time, findings, the virtual clock start and the
+  plan file itself, each reported by the name it is configured under and each
+  making the run `incomplete` rather than truncating it quietly — including
+  `maxAttemptsPerEvent`, which bounds `delivery.maxAttempts` while the plan is
+  validated and is named in the message that rejects it, and the clock start,
+  which is bounded identically in the plan and on `--start-ms`;
 - sanitisation of every untrusted string that reaches output — event ids,
   receiver ids, types, targets, paths, pointers, messages and evidence alike —
   removing C0, DEL, the whole C1 range (where `U+0085` NEL and the 8-bit CSI
@@ -84,17 +87,30 @@ All notable changes to this project are documented in this file.
 - Two runs over the same bytes produce byte-identical stdout. No wall clock,
   random source, environment variable or locale reaches the output, and nothing
   is discovered by listing a directory.
-- Severity is pinned by behaviour rather than by declaration. Each of the eight
-  rules whose severity alone decides the verdict is driven through the real
-  binary in isolation and its exit code asserted; the seventeen that also mark
-  the run incomplete are pinned in a file that imports nothing from `src`, with
-  every status, error count and printed severity word written out as a literal.
-- Every guarantee above has a test that fails when the guarantee is removed. The
-  suite was verified by mutating each one in turn — demoting a severity,
-  substituting a collator for the code-unit comparator, dropping the C1 range
-  from the strip set, replacing real-path containment with a lexical check,
-  removing an `incomplete` flag, unwiring a CLI flag from the engine — and
-  watching the corresponding test break.
+- Severity is pinned by consequence rather than by declaration. Both
+  `test/severity-decides.test.mjs` and `test/incomplete-severity.test.mjs`
+  import nothing from `src`, hold no rule table, no severity map and no
+  parameterised expectation: each case writes its own plan, runs the real
+  binary, and states its exit code, status, counted errors and printed severity
+  word as literals at the assertion. Flipping a rule in the frozen table, in the
+  documented catalog and in every list of expectations in the tests, all at
+  once, is caught for all 27 rules and in both directions.
+- Ordering is pinned by what the tool emits. An English collator substituted at
+  each comparison in turn changes the emitted order at six sites, and each of
+  those is caught by a fixture whose collation order and code-unit order
+  disagree — `Z` against `a`, `a-b` against `a_b`. Two more decide only the
+  order findings are collected in, which the sort that follows overwrites, and
+  the last four order rule ids, credential header names, limit names and the two
+  ordering modes: closed alphabets on which collation and code units agree on
+  all 856 ordered pairs, enumerated in `test/finding-order.test.mjs` so that a
+  future name that disagrees is reported rather than quietly unpinned.
+- Each guarantee above was removed in turn and the failure watched — demoting a
+  severity, substituting a collator, dropping the C1 range from the strip set,
+  replacing real-path containment with a prefix test, removing an `incomplete`
+  flag, dropping a `sanitize` call, unwiring a CLI flag from the engine. Where a
+  substitution provably changes no output at all it is recorded as an equivalent
+  mutant, with the enumeration or the byte-identical report that proves it,
+  rather than counted as coverage.
 
 ### Notes
 
