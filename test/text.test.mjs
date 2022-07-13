@@ -45,6 +45,21 @@ test('a stripped character becomes a space, so two ids do not collapse into one'
   assert.notEqual(sanitize(forged), 'ab', 'deleting the character would merge two distinct ids')
 })
 
+/**
+ * A stripped character at either end leaves a space behind, and a leading space
+ * in a printed line shifts every column after it -- so the flattened string is
+ * trimmed as well as collapsed. `evt_1` and ` evt_1` must not be two readings
+ * of the same id.
+ */
+test('a stripped character at either end leaves no space behind', () => {
+  const nel = String.fromCharCode(0x0085)
+
+  assert.equal(sanitize(`${nel}evt_1${nel}`), 'evt_1')
+  assert.equal(sanitize('  evt_1  '), 'evt_1')
+  assert.equal(sanitize(`${nel}  evt_1`), 'evt_1')
+  assert.equal(sanitize(`evt_1${String.fromCharCode(0x202e)}`), 'evt_1')
+})
+
 test('ordinary text, including non-ASCII, is left alone', () => {
   assert.equal(sanitize('evt_order-created.42'), 'evt_order-created.42')
   assert.equal(sanitize('facturé-中文'), 'facturé-中文')

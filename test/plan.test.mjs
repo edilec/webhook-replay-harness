@@ -137,8 +137,15 @@ test('a script rule naming an event the plan does not declare is refused', async
 })
 
 test('an event declares one body, and a file needs a root to live in', async () => {
-  const both = await replayPlan(plan({ events: [{ id: 'evt_1', payload: {}, file: 'a.json' }] }))
-  assert.equal(both.findings.some((finding) => finding.ruleId === 'plan-invalid'), true)
+  // The root is declared, so the only thing wrong with this event is that it
+  // carries two bodies -- and the pointer must be the event, not its file.
+  const both = await replayPlan(plan({ eventsRoot: 'events', events: [{ id: 'evt_1', payload: {}, file: 'a.json' }] }))
+  const ambiguous = both.findings.find((finding) => finding.location.pointer === '/events/0')
+  assert.notEqual(ambiguous, undefined, 'two bodies for one delivery is an ambiguity, not a default')
+  assert.equal(ambiguous.ruleId, 'plan-invalid')
+  assert.equal(ambiguous.message.includes('either an inline "payload" or a "file"'), true)
+  assert.equal(both.status, 'incomplete')
+  assert.equal(both.summary.checked, 0, 'and nothing was replayed on a guess about which body was meant')
 
   const rootless = await replayPlan(plan({ events: [{ id: 'evt_1', file: 'a.json' }] }))
   assert.equal(rootless.findings.some((finding) => finding.location.pointer === '/events/0/file'), true)
