@@ -144,6 +144,23 @@ file that is about to be committed to a repository. Strip the header from the fi
 receiver under test is supposed to reject an unsigned request, script the status it should answer
 with instead.
 
+## What a refusal repeats back
+
+A finding names the document and what was wrong with it. It does not reproduce the document.
+
+Sanitising alone does not achieve that, and both JSON reads -- the plan file and every fixture --
+proved it. V8 reports an invalid document two ways, and one of them embeds the input:
+`Unexpected token 'A', "AKIAIOSFODNN7EXAMPLE" is not valid JSON` reproduces a short document in
+full, and a longer one through a window around the offence. `sanitize` replaces control characters
+and cuts from the end, so a quoted span sitting at the front passed through it untouched and well
+inside the limit.
+
+`plan-not-json` and `event-file-not-json` now keep only the useful half -- the position, line and
+column where V8 reports them, and the offending token where it does not -- and still sanitise the
+result, because that token is one character the document chose. Stripping control characters and
+declining to repeat the input are two different guarantees, and both are wanted here: a document
+that fails to parse is a document nothing has validated.
+
 ## Limits
 
 | Limit | Default | Hard cap |

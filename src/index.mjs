@@ -41,7 +41,14 @@ import {
 } from './plan.mjs'
 import { createInProcessReceiver, isRetryableStatus, isSuccessStatus } from './receiver.mjs'
 import { compareFindings, createFinding, sortFindings } from './rules.mjs'
-import { byCodeUnit, decodeUtf8, exceedsDepth, jsonByteLength, sanitize } from './text.mjs'
+import {
+  byCodeUnit,
+  decodeUtf8,
+  exceedsDepth,
+  jsonByteLength,
+  parseFailureDetail,
+  sanitize,
+} from './text.mjs'
 
 export const TOOL_ID = 'webhook-replay-harness'
 export const REPORT_SCHEMA_VERSION = '1'
@@ -266,7 +273,7 @@ async function loadEventFile(collector, event, rootReal, limits) {
     record(collector, {
       pointer: `${event.pointer}/file`,
       ruleId: 'event-file-not-json',
-      message: `Fixture file is not valid JSON: ${sanitize(error.message, 120)}. Event "${sanitize(event.id, 80)}" was not replayed.`,
+      message: `Fixture file is not valid JSON: ${sanitize(parseFailureDetail(error), 120)}. Event "${sanitize(event.id, 80)}" was not replayed.`,
       evidence: sanitize(event.fileLabel, 120),
     })
     collector.incomplete = true
@@ -742,7 +749,7 @@ export async function replayPlanFile(planPath, options = {}) {
   try {
     parsed = JSON.parse(decoded.text)
   } catch (error) {
-    return unreadableReport(label, 'plan-not-json', `The plan file is not valid JSON: ${sanitize(error.message, 160)}.`, 'Validate the plan with a JSON parser before re-running.')
+    return unreadableReport(label, 'plan-not-json', `The plan file is not valid JSON: ${sanitize(parseFailureDetail(error), 160)}.`, 'Validate the plan with a JSON parser before re-running.')
   }
 
   let baseDir
@@ -811,4 +818,11 @@ export {
   validatePlan,
 } from './plan.mjs'
 export { SUPPORTED_TRANSPORTS, createInProcessReceiver, isRetryableStatus, isSuccessStatus } from './receiver.mjs'
-export { byCodeUnit, decodeUtf8, exceedsDepth, jsonByteLength, sanitize } from './text.mjs'
+export {
+  byCodeUnit,
+  decodeUtf8,
+  exceedsDepth,
+  jsonByteLength,
+  parseFailureDetail,
+  sanitize,
+} from './text.mjs'

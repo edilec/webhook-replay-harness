@@ -58,6 +58,44 @@ export function sanitize(value, limit = TEXT_LIMIT) {
   return `${flattened.slice(0, limit)}...`
 }
 
+const QUOTED_INPUT = /^Unexpected token (.{1,12}?), (?:\.\.\.)?".*"(?:\.\.\.)? is not valid JSON$/s
+const PARSE_POSITION = /\bat position \d+(?: \(line \d+ column \d+\))?$/
+const PARSE_EMPTY = /^Unexpected end of JSON input$/
+
+/**
+ * The useful half of a `JSON.parse` failure, without the input V8 puts in the
+ * other half.
+ *
+ * `sanitize` is not enough here, which is the whole reason this exists. V8
+ * reports a parse failure in two shapes: one names a position and quotes
+ * nothing, the other quotes the input back as
+ * `Unexpected token 'A', "AKIAIOSFODNN7EXAMPLE" is not valid JSON` -- the whole
+ * document when it is short, a window around the offence when it is not.
+ * `sanitize` replaces control characters and cuts from the END, so a quoted
+ * span at the FRONT passes through it untouched. A fixture or plan short enough
+ * to be only a credential was reproduced in full by its own error message,
+ * sanitised and still intact.
+ *
+ * That is the path taken by a document nothing has validated, which is the
+ * document least worth repeating.
+ *
+ * The quoting shape is recognised FIRST. Looking for `at position` first would
+ * be defeated by a document that merely CONTAINS that phrase, because the
+ * quoted span would then be kept as though V8 had written it.
+ *
+ * Only the offending token survives from the quoting shape. The quoted span
+ * never leaves this function. Callers still pass the result through `sanitize`,
+ * because that token is one character of the input and an input chooses its own
+ * first character.
+ */
+export function parseFailureDetail(error) {
+  const message = String(error?.message ?? '')
+  const quoted = QUOTED_INPUT.exec(message)
+  if (quoted !== null) return `unexpected token ${quoted[1]}`
+  if (PARSE_POSITION.test(message) || PARSE_EMPTY.test(message)) return message
+  return 'it could not be parsed as JSON'
+}
+
 /**
  * Decode bytes as UTF-8, strictly.
  *

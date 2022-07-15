@@ -170,7 +170,10 @@ nothing is ever discovered by listing a directory — every fixture is named exp
 Every untrusted string that reaches output — event ids, receiver ids, types, targets, paths,
 pointers, messages, evidence — is stripped of C0, DEL, the whole C1 range (where `U+0085` NEL and the
 8-bit CSI `U+009B` live), the line and paragraph separators, and the bidi formatting characters
-(whose `U+202E` would otherwise reverse everything displayed after it).
+(whose `U+202E` would otherwise reverse everything displayed after it). Stripping those characters is
+not the same guarantee as declining to repeat the input, so a document that fails to parse is named
+and located but never quoted: V8 puts the document itself inside its own parse error message, at the
+front, where a trailing cut cannot reach it.
 
 ## Limits and non-goals
 
