@@ -21,6 +21,10 @@ These are verdicts this harness reached. The run completed; the fixture set fail
 | `event-header-credential` | `error` | The fixture carries a credential-bearing header. Refused by header name; see [Credential headers](#credential-headers). |
 | `event-file-outside-root` | `error` | The fixture file resolves outside the real events root. Refused unread; its contents never reach the report. |
 
+For `target-not-declared-receiver`, the evidence names the first differing UTF-16 code-unit
+offset and values in the parsed URL keys (origin, path and query). This remains unambiguous when
+the raw spellings contain invisible characters or share a prefix longer than an excerpt can show.
+
 ### Delivery outcomes
 
 | Rule | Severity | Raised when |

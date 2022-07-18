@@ -309,12 +309,22 @@ function classifyTarget(collector, event, plan) {
       pointer: `${event.pointer}/target`,
       ruleId: 'target-not-declared-receiver',
       message: `Delivery refused before any attempt: the target is loopback but is not the declared receiver, so event "${sanitize(event.id, 80)}" was not sent anywhere.`,
-      evidence: `${sanitize(raw, 80)} is not ${sanitize(plan.receiver.url, 60)}`,
+      evidence: firstUrlKeyDifference(classified.key, plan.receiver.key),
       suggestion: 'Declare this endpoint as the receiver, or correct the event target.',
     })
     return false
   }
   return true
+}
+
+/** Name a mismatch that remains visible even when both URL excerpts share a long prefix. */
+function firstUrlKeyDifference(target, receiver) {
+  let offset = 0
+  while (offset < target.length && offset < receiver.length && target[offset] === receiver[offset]) offset += 1
+  const unit = (value) => offset === value.length
+    ? 'end of URL'
+    : `U+${value.charCodeAt(offset).toString(16).toUpperCase().padStart(4, '0')}`
+  return `URL keys first differ at UTF-16 offset ${offset}: target ${unit(target)}; receiver ${unit(receiver)}`
 }
 
 function classifyHeaders(collector, event) {

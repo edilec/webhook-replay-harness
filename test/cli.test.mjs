@@ -137,6 +137,61 @@ test('the shipped examples exit 0 and 1 as documented', async () => {
   ])
 })
 
+test('equivalent target URL spellings remain a clean one-event replay', async () => {
+  await withPlan(cleanPlan({
+    events: [{ id: 'evt_1', target: `${RECEIVER_URL}#fixture-only`, payload: {} }],
+  }), async (planPath) => {
+    const result = await cli(['--plan', planPath, '--json'])
+    const report = JSON.parse(result.stdout)
+    assert.equal(result.code, 0)
+    assert.equal(report.status, 'pass')
+    assert.equal(report.summary.checked, 1)
+    assert.deepEqual(report.findings, [])
+  })
+})
+
+test('a hidden character in either URL side is refused with visible differing key units', async () => {
+  const hidden = `http://127.0.0.1:8787/hooks/${String.fromCharCode(0x200e)}orders`
+  for (const [receiverUrl, targetUrl, targetUnit, receiverUnit] of [
+    [RECEIVER_URL, hidden, 'U+0025', 'U+006F'],
+    [hidden, RECEIVER_URL, 'U+006F', 'U+0025'],
+  ]) {
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url: receiverUrl },
+      events: [{ id: 'evt_1', target: targetUrl, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      const finding = report.findings.find((item) => item.ruleId === 'target-not-declared-receiver')
+      assert.equal(result.code, 1)
+      assert.equal(report.status, 'fail')
+      assert.equal(report.summary.checked, 1)
+      assert.ok(finding)
+      assert.match(finding.evidence, /URL keys first differ at UTF-16 offset \d+/)
+      assert.equal(finding.evidence.includes(`target ${targetUnit}; receiver ${receiverUnit}`), true)
+      assert.equal(finding.evidence.includes('orders is not orders'), false)
+      assert.equal(result.stdout.includes(String.fromCharCode(0x200e)), false)
+    })
+  }
+})
+
+test('a URL difference beyond both evidence excerpt lengths remains explicit', async () => {
+  const prefix = 'http://127.0.0.1:8787/hooks/' + 'a'.repeat(180)
+  await withPlan(cleanPlan({
+    receiver: { id: 'orders', url: `${prefix}y` },
+    events: [{ id: 'evt_1', target: `${prefix}z`, payload: {} }],
+  }), async (planPath) => {
+    const result = await cli(['--plan', planPath, '--json'])
+    const report = JSON.parse(result.stdout)
+    const finding = report.findings.find((item) => item.ruleId === 'target-not-declared-receiver')
+    assert.equal(result.code, 1)
+    assert.equal(report.status, 'fail')
+    assert.equal(report.summary.checked, 1)
+    assert.ok(finding)
+    assert.match(finding.evidence, /URL keys first differ at UTF-16 offset \d+: target U\+007A; receiver U\+0079/)
+  })
+})
+
 test('two runs over the same plan write byte-identical stdout', async () => {
   const first = await cli(['--plan', 'examples/broken/plan.json', '--json'])
   const second = await cli(['--plan', 'examples/broken/plan.json', '--json'])
