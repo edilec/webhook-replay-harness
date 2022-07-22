@@ -192,6 +192,75 @@ test('a URL difference beyond both evidence excerpt lengths remains explicit', a
   })
 })
 
+test('ordinary and long-whitespace-prefixed visible ids remain valid', async () => {
+  await withPlan(cleanPlan({
+    receiver: { id: 'orders receiver', url: RECEIVER_URL },
+    events: [{ id: `${' '.repeat(160)}A`, payload: {} }],
+  }), async (planPath) => {
+    const result = await cli(['--plan', planPath, '--json'])
+    const report = JSON.parse(result.stdout)
+    assert.equal(result.code, 0)
+    assert.equal(report.status, 'pass')
+    assert.equal(report.summary.checked, 1)
+    assert.deepEqual(report.findings, [])
+    assert.equal(report.replay.receiver.id, 'orders receiver')
+    assert.equal(report.replay.deliveries[0].eventId, 'A')
+  })
+})
+
+test('a rendered-empty event or receiver id makes the plan incomplete', async () => {
+  const invisible = String.fromCharCode(0x200e)
+  for (const [subject, body, pointer] of [
+    ['event', cleanPlan({ events: [{ id: invisible, payload: {} }] }), '/events/0/id'],
+    ['receiver', cleanPlan({ receiver: { id: invisible, url: RECEIVER_URL } }), '/receiver/id'],
+  ]) {
+    await withPlan(body, async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      assert.equal(result.code, 2, `${subject} id was treated as a complete plan`)
+      assert.equal(report.status, 'incomplete')
+      assert.equal(report.summary.checked, 0)
+      const finding = report.findings.find((item) => item.ruleId === 'plan-invalid' && item.location.pointer === pointer)
+      assert.ok(finding, `${subject} id needs a pointed plan-invalid finding`)
+      assert.match(finding.message, /visible characters/)
+      assert.equal(result.stdout.includes(invisible), false)
+    })
+  }
+})
+
+test('different raw event ids with the same report spelling are refused on either side', async () => {
+  const marked = `foo${String.fromCharCode(0x200e)}bar`
+  for (const ids of [[marked, 'foo bar'], ['foo bar', marked]]) {
+    await withPlan(cleanPlan({
+      events: ids.map((id) => ({ id, payload: {} })),
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      assert.equal(result.code, 2)
+      assert.equal(report.status, 'incomplete')
+      assert.equal(report.summary.checked, 0)
+      const finding = report.findings.find((item) => item.ruleId === 'plan-invalid' && item.location.pointer === '/events/1/id')
+      assert.ok(finding)
+      assert.match(finding.message, /renders identically to the distinct id at \/events\/0\/id/)
+      assert.equal(result.stdout.includes(String.fromCharCode(0x200e)), false)
+    })
+  }
+})
+
+test('an exact duplicate event id remains a legitimate deduplication case', async () => {
+  await withPlan(cleanPlan({
+    events: [{ id: 'foo bar', payload: {} }, { id: 'foo bar', payload: {} }],
+  }), async (planPath) => {
+    const result = await cli(['--plan', planPath, '--json'])
+    const report = JSON.parse(result.stdout)
+    assert.equal(result.code, 0)
+    assert.equal(report.status, 'pass')
+    assert.equal(report.summary.checked, 2)
+    assert.equal(report.findings.some((item) => item.ruleId === 'plan-invalid'), false)
+    assert.equal(report.findings.some((item) => item.ruleId === 'duplicate-event-id-deduplicated'), true)
+  })
+})
+
 test('two runs over the same plan write byte-identical stdout', async () => {
   const first = await cli(['--plan', 'examples/broken/plan.json', '--json'])
   const second = await cli(['--plan', 'examples/broken/plan.json', '--json'])

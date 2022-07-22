@@ -269,6 +269,16 @@ function readString(record, key, pointer, sink, { maxLength = MAX_ID_LENGTH, req
   return value
 }
 
+/** An identifier must still say something after the report's rendering rules. */
+function readIdentifier(record, key, pointer, sink) {
+  const value = readString(record, key, pointer, sink, { required: true })
+  if (value !== null && sanitize(value, MAX_ID_LENGTH) === '') {
+    sink.invalid(`${pointer}/${key}`, `"${key}" must contain visible characters after report sanitisation.`)
+    return null
+  }
+  return value
+}
+
 /**
  * A path a fixture may name: relative to the plan file, never absolute.
  *
@@ -421,7 +431,7 @@ function validateReceiver(raw, allowedHosts, limits, sink) {
   }
   let bad = checkKeys(raw, RECEIVER_KEYS, '/receiver', sink)
 
-  const id = readString(raw, 'id', '/receiver', sink, { required: true })
+  const id = readIdentifier(raw, 'id', '/receiver', sink)
   const transport = Object.hasOwn(raw, 'transport') ? raw.transport : SUPPORTED_TRANSPORTS[0]
   if (!SUPPORTED_TRANSPORTS.includes(transport)) {
     sink.invalid(
@@ -510,6 +520,7 @@ function validateEvents(raw, { eventsRoot, sink }) {
   }
   let bad = false
   const events = []
+  const renderedIds = new Map()
 
   raw.forEach((entry, index) => {
     const pointer = `/events/${index}`
@@ -519,7 +530,7 @@ function validateEvents(raw, { eventsRoot, sink }) {
       return
     }
     checkKeys(entry, EVENT_KEYS, pointer, sink)
-    const id = readString(entry, 'id', pointer, sink, { required: true })
+    const id = readIdentifier(entry, 'id', pointer, sink)
     const type = Object.hasOwn(entry, 'type') ? readString(entry, 'type', pointer, sink, {}) : null
     let target = null
     if (Object.hasOwn(entry, 'target')) {
@@ -562,6 +573,15 @@ function validateEvents(raw, { eventsRoot, sink }) {
       bad = true
       return
     }
+    const rendered = sanitize(id, MAX_ID_LENGTH)
+    const first = renderedIds.get(rendered)
+    if (first !== undefined && first.id !== id) {
+      sink.invalid(
+        `${pointer}/id`,
+        `Event id at ${pointer}/id renders identically to the distinct id at ${first.pointer}/id; give them visibly distinct ids.`,
+      )
+      bad = true
+    } else if (first === undefined) renderedIds.set(rendered, { id, pointer })
     events.push({
       index,
       pointer,

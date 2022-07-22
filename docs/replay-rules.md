@@ -124,6 +124,10 @@ The delay before attempt *n + 1* is `min(maxBackoffMs, backoffMs * backoffFactor
 | `payload` | any JSON | Optional inline body. |
 | `file` | string | Optional path under `eventsRoot`. Mutually exclusive with `payload`. |
 
+The receiver and event ids must remain non-empty after report sanitisation. Two different raw event
+ids that render identically make the plan incomplete, since the capture could not distinguish them;
+repeating the *same* raw id remains valid and exercises deduplication.
+
 ### Status classes
 
 | Class | Statuses | Effect |
