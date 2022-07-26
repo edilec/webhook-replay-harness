@@ -395,8 +395,22 @@ export function validatePlan(raw, options) {
 
   if (receiver !== null && events !== null) {
     const declared = new Set(events.map((event) => event.id))
+    const renderedEvents = new Map()
+    for (const event of events) {
+      const rendered = sanitize(event.id, MAX_ID_LENGTH)
+      if (!renderedEvents.has(rendered)) renderedEvents.set(rendered, event)
+    }
     for (const rule of receiver.script) {
       if (!declared.has(rule.event)) {
+        const lookalike = renderedEvents.get(sanitize(rule.event, MAX_ID_LENGTH))
+        if (lookalike !== undefined) {
+          sink.invalid(
+            '/receiver/script',
+            `A distinct raw event id at ${lookalike.pointer}/id renders identically to this script event id, but does not match it; the scripted statuses would never apply.`,
+            'Make the script event id exactly match the declared event id, or give them visibly distinct ids.',
+          )
+          continue
+        }
         sink.invalid(
           '/receiver/script',
           `Script rule names event "${sanitize(rule.event, 80)}", which no event in this plan declares, so the statuses it scripts would never be used.`,

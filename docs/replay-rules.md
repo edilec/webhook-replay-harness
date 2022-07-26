@@ -101,6 +101,9 @@ real failure came back green.
 A script rule's `statuses` gives the answer per attempt, and its **last entry repeats**: `[503, 200]`
 means "fail once, then accept for ever". A rule naming an event the plan does not declare is
 `plan-invalid` — a scripted retry nobody wired up would otherwise look like a plain success.
+Matching uses the raw event id. If a script id differs from a declared id but both render the same
+in the report, the finding identifies that ambiguity and the declared event's pointer; it does not
+claim the visible id is absent.
 
 ### `delivery`
 

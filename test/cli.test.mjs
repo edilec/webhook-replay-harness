@@ -261,6 +261,60 @@ test('an exact duplicate event id remains a legitimate deduplication case', asyn
   })
 })
 
+test('an exact raw script event id still selects its declared event', async () => {
+  for (const id of ['foo bar', `foo${String.fromCharCode(0x200e)}bar`]) {
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url: RECEIVER_URL, script: [{ event: id, statuses: [201] }] },
+      events: [{ id, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      assert.equal(result.code, 0)
+      assert.equal(report.status, 'pass')
+      assert.equal(report.summary.checked, 1)
+      assert.deepEqual(report.findings, [])
+      assert.equal(report.replay.deliveries[0].finalStatus, 201)
+    })
+  }
+})
+
+test('a raw-distinct script id with the same report spelling names the ambiguity on either side', async () => {
+  const marked = `foo${String.fromCharCode(0x200e)}bar`
+  for (const [eventId, scriptId] of [[marked, 'foo bar'], ['foo bar', marked]]) {
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url: RECEIVER_URL, script: [{ event: scriptId, statuses: [201] }] },
+      events: [{ id: eventId, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      const finding = report.findings.find((item) => item.ruleId === 'plan-invalid' && item.location.pointer === '/receiver/script')
+      assert.equal(result.code, 2)
+      assert.equal(report.status, 'incomplete')
+      assert.equal(report.summary.checked, 0)
+      assert.ok(finding)
+      assert.match(finding.message, /distinct raw event id at \/events\/0\/id renders identically/)
+      assert.equal(finding.message.includes('which no event in this plan declares'), false)
+      assert.equal(result.stdout.includes(String.fromCharCode(0x200e)), false)
+    })
+  }
+})
+
+test('a truly absent script event id keeps the undeclared-event diagnosis', async () => {
+  await withPlan(cleanPlan({
+    receiver: { id: 'orders', url: RECEIVER_URL, script: [{ event: 'ghost', statuses: [201] }] },
+  }), async (planPath) => {
+    const result = await cli(['--plan', planPath, '--json'])
+    const report = JSON.parse(result.stdout)
+    const finding = report.findings.find((item) => item.ruleId === 'plan-invalid' && item.location.pointer === '/receiver/script')
+    assert.equal(result.code, 2)
+    assert.equal(report.status, 'incomplete')
+    assert.equal(report.summary.checked, 0)
+    assert.ok(finding)
+    assert.match(finding.message, /which no event in this plan declares/)
+    assert.equal(finding.message.includes('renders identically'), false)
+  })
+})
+
 test('two runs over the same plan write byte-identical stdout', async () => {
   const first = await cli(['--plan', 'examples/broken/plan.json', '--json'])
   const second = await cli(['--plan', 'examples/broken/plan.json', '--json'])
