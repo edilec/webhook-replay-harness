@@ -150,6 +150,70 @@ test('equivalent target URL spellings remain a clean one-event replay', async ()
   })
 })
 
+test('distinct receiver endpoints hidden by report sanitisation keep distinct canonical provenance', async () => {
+  const reports = []
+  for (const [codePoint, encoded] of [[0x85, '%C2%85'], [0x9b, '%C2%9B']]) {
+    const hidden = String.fromCharCode(codePoint)
+    const url = `http://127.0.0.1:8787/h${hidden}ooks`
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url },
+      events: [{ id: 'evt_1', target: `${url}#fixture-only`, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      assert.equal(result.code, 0)
+      assert.equal(report.status, 'pass')
+      assert.equal(report.summary.delivered, 1)
+      assert.deepEqual(report.findings, [])
+      assert.equal(report.replay.receiver.url, `http://127.0.0.1:8787/h${encoded}ooks`)
+      assert.equal(result.stdout.includes(hidden), false)
+      reports.push(result.stdout)
+    })
+  }
+  assert.notEqual(reports[0], reports[1])
+})
+
+test('ordinary receiver URL fragments do not change the canonical endpoint provenance', async () => {
+  await withPlan(cleanPlan({
+    receiver: { id: 'orders', url: `${RECEIVER_URL}#plan-note` },
+    events: [{ id: 'evt_1', target: RECEIVER_URL, payload: {} }],
+  }), async (planPath) => {
+    const result = await cli(['--plan', planPath, '--json'])
+    const report = JSON.parse(result.stdout)
+    assert.equal(result.code, 0)
+    assert.equal(report.status, 'pass')
+    assert.equal(report.replay.receiver.url, RECEIVER_URL)
+    assert.deepEqual(report.findings, [])
+  })
+})
+
+test('long canonical receiver URLs retain bounded distinct identity metadata', async () => {
+  const prefix = `${RECEIVER_URL}/${'a'.repeat(210)}`
+  const urls = []
+  const hashes = []
+  for (const suffix of ['x', 'y']) {
+    const url = `${prefix}${suffix}`
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url },
+      events: [{ id: 'evt_1', target: url, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      assert.equal(result.code, 0)
+      assert.equal(report.status, 'pass')
+      assert.equal(report.summary.delivered, 1)
+      assert.deepEqual(report.findings, [])
+      assert.ok(report.replay.receiver.url.length <= 203)
+      assert.ok(report.replay.receiver.url.endsWith('...'))
+      assert.match(report.replay.receiver.urlKeySha256, /^[0-9a-f]{64}$/)
+      urls.push(report.replay.receiver.url)
+      hashes.push(report.replay.receiver.urlKeySha256)
+    })
+  }
+  assert.equal(urls[0], urls[1], 'the bounded URL excerpt alone is ambiguous')
+  assert.notEqual(hashes[0], hashes[1], 'the endpoint identity remains distinct')
+})
+
 test('a hidden character in either URL side is refused with visible differing key units', async () => {
   const hidden = `http://127.0.0.1:8787/hooks/${String.fromCharCode(0x200e)}orders`
   for (const [receiverUrl, targetUrl, targetUnit, receiverUnit] of [

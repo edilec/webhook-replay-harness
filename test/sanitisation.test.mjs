@@ -170,12 +170,12 @@ test('a hostile character in the receiver url reaches neither the report nor the
 
     assert.equal(report.status, 'pass', 'the URL is legitimate apart from the character in it')
     assert.equal(report.replay.receiver.url.includes(String.fromCharCode(0x0085)), false)
-    assert.equal(report.replay.receiver.url, 'http://127.0.0.1:8787/hooks INFO all is well, 0 error')
+    assert.equal(report.replay.receiver.url, 'http://127.0.0.1:8787/hooks%C2%85INFO%20%20%20%20all%20is%20well,%200%20error')
     assert.equal(stderr.includes(String.fromCharCode(0x0085)), false, 'and the C1 character never reaches a terminal')
     assert.equal(lines.length, 4, 'four summary lines, and no fifth line forged by the plan')
     assert.equal(
       lines[1],
-      'receiver: orders at http://127.0.0.1:8787/hooks INFO all is well, 0 error (in-process). No socket was opened and nothing left this machine.',
+      'receiver: orders at http://127.0.0.1:8787/hooks%C2%85INFO%20%20%20%20all%20is%20well,%200%20error (in-process). No socket was opened and nothing left this machine.',
     )
   } finally {
     await rm(base, { recursive: true, force: true })

@@ -130,7 +130,7 @@ The envelope is the Edilec report contract: `schemaVersion`, `tool`, `status`, `
 ```json
 {
   "replay": {
-    "receiver": { "id": "orders-receiver", "url": "http://127.0.0.1:8787/hooks/orders", "transport": "in-process", "dedupe": true },
+    "receiver": { "id": "orders-receiver", "url": "http://127.0.0.1:8787/hooks/orders", "urlKeySha256": "00240753c9d75ae70346f556ca49db565f8e35fc62fc856a9524f6eb71fe4733", "transport": "in-process", "dedupe": true },
     "ordering": "fixture",
     "clock": { "startMs": 0, "endMs": 274 },
     "deliveries": [
@@ -147,6 +147,10 @@ The envelope is the Edilec report contract: `schemaVersion`, `tool`, `status`, `
 
 `deliveries` is the replay order. `receiverLog` is every attempt the receiver saw, in the order it
 saw them — including the ones it deduplicated.
+`replay.receiver.url` is the bounded canonical endpoint key (origin, path and
+query; no fragment), not a cleaned-up copy of the raw plan URL. The SHA-256 of
+that complete key remains distinct when two long URLs have the same truncated
+excerpt. Neither value is a proof of a live network delivery.
 
 ## Exit codes
 

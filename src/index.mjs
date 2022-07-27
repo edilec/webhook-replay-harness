@@ -26,6 +26,7 @@
  *    `checked: 0` is not reachable.
  */
 
+import { createHash } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 
@@ -676,7 +677,8 @@ export async function replayPlan(rawPlan, options = {}) {
   const replay = {
     receiver: {
       id: sanitize(plan.receiver.id, 120),
-      url: sanitize(plan.receiver.url, 200),
+      url: sanitize(plan.receiver.key, 200),
+      urlKeySha256: createHash('sha256').update(plan.receiver.key, 'utf8').digest('hex'),
       transport: plan.receiver.transport,
       dedupe: plan.receiver.dedupe,
     },
