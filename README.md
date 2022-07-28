@@ -21,9 +21,10 @@ fails the run with exit 1.
 
 This is structural rather than a policy the tool could be argued out of. The package imports no
 socket, HTTP, datagram, resolver or TLS module, invokes no fetch primitive, and spawns no process.
-`test/no-network.test.mjs` proves it the direct way: it opens a real HTTP listener on a real loopback
-port, declares that exact port as the plan's receiver, replays two events into it successfully, and
-asserts the listener saw **zero connections and zero requests**.
+`test/no-network.test.mjs` checks the shipped source and runs the CLI under a child-process preload
+that denies fetch and socket primitives before they can bind or connect. A host-free `data:` fetch
+proves the denial is active; two fixture events still replay successfully under it. A separate
+test-source gate fails if a listener import or bind call is reintroduced. No test opens a listener.
 
 `allowedHosts` can only ever narrow the policy. Listing `hooks.example.com` in it does not make that
 host deliverable, because the loopback test is applied first and there is no way to spell past it.

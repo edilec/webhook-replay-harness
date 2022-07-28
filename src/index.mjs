@@ -10,9 +10,9 @@
  *    not a socket. This package imports no socket, HTTP, datagram, resolver or
  *    TLS module from the platform, invokes no fetch primitive, and spawns no
  *    process, so there is no code path a fixture could steer towards a network.
- *    `test/no-network.test.mjs` proves it the direct way: it opens a real
- *    listener on a real loopback port, declares that port as the receiver, and
- *    asserts the listener saw no connection. A fixture naming an external URL,
+ *    `test/no-network.test.mjs` checks the source and runs real CLI deliveries
+ *    under an offline preload that denies fetch and socket primitives before
+ *    they can bind or connect. A fixture naming an external URL,
  *    a non-loopback host, or any endpoint other than the declared receiver is
  *    refused *before* any attempt is constructed, and that refusal is an error
  *    that fails the run.

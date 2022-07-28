@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { readFile, readdir } from 'node:fs/promises'
-import { createServer } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -11,38 +10,11 @@ import { promisify } from 'node:util'
 
 import { replayPlan } from '../src/index.mjs'
 
+
 const run = promisify(execFile)
 const projectDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const CLI = join(projectDirectory, 'bin/webhook-replay-harness.mjs')
-
-/**
- * The safety property, proved rather than asserted.
- *
- * The strongest version of "nothing left this machine" is not a source scan: it
- * is a real listener, on a real loopback port, that the plan declares as its
- * receiver and that the fixtures target -- and which then records that nothing
- * ever knocked. If any code path in this tool opened a socket for a delivery,
- * the socket it would open is this one.
- */
-async function withListener(body) {
-  const seen = { connections: 0, requests: 0 }
-  const server = createServer((request, response) => {
-    seen.requests += 1
-    response.statusCode = 200
-    response.end('{}')
-  })
-  server.on('connection', () => {
-    seen.connections += 1
-  })
-
-  await new Promise((done) => server.listen(0, '127.0.0.1', done))
-  const { port } = server.address()
-  try {
-    return await body({ url: `http://127.0.0.1:${port}/hooks/orders`, seen, port })
-  } finally {
-    await new Promise((done) => server.close(done))
-  }
-}
+const DENY_NETWORK = join(projectDirectory, 'test/deny-network.mjs')
 
 async function withBase(body) {
   const base = await mkdtemp(join(tmpdir(), 'webhook-replay-harness-network-'))
@@ -53,9 +25,10 @@ async function withBase(body) {
   }
 }
 
-async function runCli(planPath) {
+async function runCli(planPath, preload = null) {
   try {
-    const { stdout } = await run(process.execPath, [CLI, '--plan', planPath, '--json'], { cwd: projectDirectory })
+    const args = [...(preload === null ? [] : ['--import', preload]), CLI, '--plan', planPath, '--json']
+    const { stdout } = await run(process.execPath, args, { cwd: projectDirectory })
     return { code: 0, report: JSON.parse(stdout) }
   } catch (error) {
     return { code: error.code, report: JSON.parse(error.stdout) }
@@ -72,26 +45,66 @@ async function shippedSource() {
   return parts.join(String.fromCharCode(10))
 }
 
-test('a declared, live, loopback receiver is never actually contacted', async () => {
-  await withListener(async ({ url, seen }) => {
-    await withBase(async (base) => {
-      const planPath = join(base, 'plan.json')
-      await writeFile(planPath, JSON.stringify({
-        receiver: { id: 'orders', url },
-        events: [
-          { id: 'evt_1', target: url, payload: { orderId: 'A-1' } },
-          { id: 'evt_2', target: url, payload: { orderId: 'A-2' } },
-        ],
-      }))
+async function listenerTestSources(directory) {
+  const names = (await readdir(directory)).filter((name) => name.endsWith('.mjs')).sort()
+  const forbidden = [
+    /\bcreateServer\s*\(/,
+    /\.listen\s*\(/,
+  ]
+  const offenders = []
+  for (const name of names) {
+    const source = await readFile(join(directory, name), 'utf8')
+    if (forbidden.some((pattern) => pattern.test(source)) ||
+      (name.endsWith('.test.mjs') && /\bfrom\s*['"]node:(?:net|http|https|tls|dgram)['"]/.test(source))) {
+      offenders.push(name)
+    }
+  }
+  return offenders
+}
 
-      const { code, report } = await runCli(planPath)
+test('test-source guard detects a reintroduced loopback listener', async () => {
+  await withBase(async (base) => {
+    const name = 'unsafe.test.mjs'
+    const source = `import { create${'Server'} } from 'node:${'http'}'\ncreate${'Server'}().lis${'ten'}(0)`
+    await writeFile(join(base, name), source)
+    assert.deepEqual(await listenerTestSources(base), [name])
+  })
+})
 
-      assert.equal(code, 0)
-      assert.equal(report.summary.delivered, 2, 'both events were delivered')
-      assert.equal(report.replay.receiver.transport, 'in-process')
-      assert.equal(report.replay.receiverLog.length, 2, 'to a receiver in that process')
-      assert.deepEqual(seen, { connections: 0, requests: 0 }, 'and the real listener on that exact port saw nothing at all')
-    })
+test('shipped tests never import or bind a listener', async () => {
+  assert.deepEqual(await listenerTestSources(join(projectDirectory, 'test')), [])
+})
+
+test('offline preload denies even a host-free data URL fetch', async () => {
+  let code = 0
+  let stderr = ''
+  try {
+    await run(process.execPath, ['--import', DENY_NETWORK, '--input-type=module', '--eval', "await fetch('data:text/plain,probe')"], { cwd: projectDirectory })
+  } catch (error) {
+    code = error.code
+    stderr = error.stderr
+  }
+  assert.notEqual(code, 0)
+  assert.match(stderr, /OFFLINE_NETWORK_DENIED/)
+})
+
+test('two in-process deliveries complete under active offline network denial', async () => {
+  await withBase(async (base) => {
+    const planPath = join(base, 'plan.json')
+    const url = 'http://127.0.0.1:8787/hooks/orders'
+    await writeFile(planPath, JSON.stringify({
+      receiver: { id: 'orders', url },
+      events: [
+        { id: 'evt_1', target: url, payload: { orderId: 'A-1' } },
+        { id: 'evt_2', target: url, payload: { orderId: 'A-2' } },
+      ],
+    }))
+    const { code, report } = await runCli(planPath, DENY_NETWORK)
+    assert.equal(code, 0)
+    assert.equal(report.status, 'pass')
+    assert.equal(report.summary.delivered, 2)
+    assert.equal(report.replay.receiver.transport, 'in-process')
+    assert.equal(report.replay.receiverLog.length, 2)
   })
 })
 
