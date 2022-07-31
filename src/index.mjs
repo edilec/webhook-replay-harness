@@ -26,7 +26,6 @@
  *    `checked: 0` is not reachable.
  */
 
-import { createHash } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 
@@ -310,7 +309,7 @@ function classifyTarget(collector, event, plan) {
       pointer: `${event.pointer}/target`,
       ruleId: 'target-not-declared-receiver',
       message: `Delivery refused before any attempt: the target is loopback but is not the declared receiver, so event "${sanitize(event.id, 80)}" was not sent anywhere.`,
-      evidence: firstUrlKeyDifference(classified.key, plan.receiver.key),
+      evidence: urlMismatchEvidence(classified.key, plan.receiver.key, `${event.pointer}/target`),
       suggestion: 'Declare this endpoint as the receiver, or correct the event target.',
     })
     return false
@@ -318,14 +317,12 @@ function classifyTarget(collector, event, plan) {
   return true
 }
 
-/** Name a mismatch that remains visible even when both URL excerpts share a long prefix. */
-function firstUrlKeyDifference(target, receiver) {
-  let offset = 0
-  while (offset < target.length && offset < receiver.length && target[offset] === receiver[offset]) offset += 1
-  const unit = (value) => offset === value.length
-    ? 'end of URL'
-    : `U+${value.charCodeAt(offset).toString(16).toUpperCase().padStart(4, '0')}`
-  return `URL keys first differ at UTF-16 offset ${offset}: target ${unit(target)}; receiver ${unit(receiver)}`
+/** Locate a mismatch without turning hidden URL suffixes into a character oracle. */
+function urlMismatchEvidence(target, receiver, targetPointer) {
+  const targetLabel = sanitize(target, 80)
+  const receiverLabel = sanitize(receiver, 80)
+  if (targetLabel !== receiverLabel) return `target ${targetLabel} vs receiver ${receiverLabel}`
+  return `Exact URL values differ beyond the displayed excerpt; target ${targetPointer}; receiver /receiver/url`
 }
 
 function classifyHeaders(collector, event) {
@@ -678,7 +675,8 @@ export async function replayPlan(rawPlan, options = {}) {
     receiver: {
       id: sanitize(plan.receiver.id, 120),
       url: sanitize(plan.receiver.key, 200),
-      urlKeySha256: createHash('sha256').update(plan.receiver.key, 'utf8').digest('hex'),
+      pointer: '/receiver/url',
+      truncated: plan.receiver.key.length > 200,
       transport: plan.receiver.transport,
       dedupe: plan.receiver.dedupe,
     },
@@ -797,7 +795,9 @@ const SEVERITY_WIDTH = 7
  */
 export function formatReport(report) {
   const { summary, replay } = report
-  const receiver = replay.receiver === null ? 'none (the plan was not replayable)' : `${replay.receiver.id} at ${replay.receiver.url} (${replay.receiver.transport})`
+  const receiver = replay.receiver === null
+    ? 'none (the plan was not replayable)'
+    : `${replay.receiver.id} at ${replay.receiver.url}${replay.receiver.truncated ? ' [truncated; source /receiver/url]' : ''} (${replay.receiver.transport})`
   const lines = [
     `${summary.checked} of ${summary.events} event(s) replayed to a verdict: ${summary.errors} error, ${summary.warnings} warning, ${summary.info} info, status ${report.status}.`,
     `receiver: ${receiver}. No socket was opened and nothing left this machine.`,

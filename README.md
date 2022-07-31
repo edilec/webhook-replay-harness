@@ -131,7 +131,7 @@ The envelope is the Edilec report contract: `schemaVersion`, `tool`, `status`, `
 ```json
 {
   "replay": {
-    "receiver": { "id": "orders-receiver", "url": "http://127.0.0.1:8787/hooks/orders", "urlKeySha256": "00240753c9d75ae70346f556ca49db565f8e35fc62fc856a9524f6eb71fe4733", "transport": "in-process", "dedupe": true },
+    "receiver": { "id": "orders-receiver", "url": "http://127.0.0.1:8787/hooks/orders", "pointer": "/receiver/url", "truncated": false, "transport": "in-process", "dedupe": true },
     "ordering": "fixture",
     "clock": { "startMs": 0, "endMs": 274 },
     "deliveries": [
@@ -149,9 +149,13 @@ The envelope is the Edilec report contract: `schemaVersion`, `tool`, `status`, `
 `deliveries` is the replay order. `receiverLog` is every attempt the receiver saw, in the order it
 saw them — including the ones it deduplicated.
 `replay.receiver.url` is the bounded canonical endpoint key (origin, path and
-query; no fragment), not a cleaned-up copy of the raw plan URL. The SHA-256 of
-that complete key remains distinct when two long URLs have the same truncated
-excerpt. Neither value is a proof of a live network delivery.
+query; no fragment), not a cleaned-up copy of the raw plan URL. `truncated`
+identifies an excerpt rather than a full key, and `pointer` identifies the
+authoritative plan field. No hash of the full URL is published: a hash of a
+low-entropy query value can reveal it by guessing. When two long URL excerpts
+collide, mismatch findings point to the target and receiver fields without
+revealing hidden query characters. Neither the excerpt nor a matching verdict
+is proof of a live network delivery.
 
 ## Exit codes
 

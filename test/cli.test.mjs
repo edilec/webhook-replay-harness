@@ -187,11 +187,10 @@ test('ordinary receiver URL fragments do not change the canonical endpoint prove
   })
 })
 
-test('long canonical receiver URLs retain bounded distinct identity metadata', async () => {
-  const prefix = `${RECEIVER_URL}/${'a'.repeat(210)}`
+test('long receiver query values have bounded excerpts, source pointers and no published digest', async () => {
+  const prefix = `${RECEIVER_URL}?pad=${'a'.repeat(210)}&code=`
   const urls = []
-  const hashes = []
-  for (const suffix of ['x', 'y']) {
+  for (const suffix of ['RED', 'BLUE']) {
     const url = `${prefix}${suffix}`
     await withPlan(cleanPlan({
       receiver: { id: 'orders', url },
@@ -205,20 +204,40 @@ test('long canonical receiver URLs retain bounded distinct identity metadata', a
       assert.deepEqual(report.findings, [])
       assert.ok(report.replay.receiver.url.length <= 203)
       assert.ok(report.replay.receiver.url.endsWith('...'))
-      assert.match(report.replay.receiver.urlKeySha256, /^[0-9a-f]{64}$/)
+      assert.equal(report.replay.receiver.pointer, '/receiver/url')
+      assert.equal(report.replay.receiver.truncated, true)
+      assert.equal(Object.hasOwn(report.replay.receiver, 'urlKeySha256'), false)
+      assert.equal(result.stdout.includes(suffix), false)
       urls.push(report.replay.receiver.url)
-      hashes.push(report.replay.receiver.urlKeySha256)
     })
   }
   assert.equal(urls[0], urls[1], 'the bounded URL excerpt alone is ambiguous')
-  assert.notEqual(hashes[0], hashes[1], 'the endpoint identity remains distinct')
 })
 
-test('a hidden character in either URL side is refused with visible differing key units', async () => {
+test('receiver URL truncation flag is false at 200 canonical units and true at 201', async () => {
+  const atBound = `${RECEIVER_URL}?pad=${'a'.repeat(200 - RECEIVER_URL.length - '?pad='.length)}`
+  assert.equal(atBound.length, 200)
+  for (const [url, truncated] of [[atBound, false], [`${atBound}X`, true]]) {
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url },
+      events: [{ id: 'evt_1', target: url, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath, '--json'])
+      const report = JSON.parse(result.stdout)
+      assert.equal(result.code, 0)
+      assert.equal(report.status, 'pass')
+      assert.equal(report.replay.receiver.pointer, '/receiver/url')
+      assert.equal(report.replay.receiver.truncated, truncated)
+      assert.equal(report.replay.receiver.url, truncated ? `${atBound}...` : atBound)
+    })
+  }
+})
+
+test('a hidden character in either URL side is refused with distinct canonical excerpts', async () => {
   const hidden = `http://127.0.0.1:8787/hooks/${String.fromCharCode(0x200e)}orders`
-  for (const [receiverUrl, targetUrl, targetUnit, receiverUnit] of [
-    [RECEIVER_URL, hidden, 'U+0025', 'U+006F'],
-    [hidden, RECEIVER_URL, 'U+006F', 'U+0025'],
+  for (const [receiverUrl, targetUrl] of [
+    [RECEIVER_URL, hidden],
+    [hidden, RECEIVER_URL],
   ]) {
     await withPlan(cleanPlan({
       receiver: { id: 'orders', url: receiverUrl },
@@ -231,19 +250,20 @@ test('a hidden character in either URL side is refused with visible differing ke
       assert.equal(report.status, 'fail')
       assert.equal(report.summary.checked, 1)
       assert.ok(finding)
-      assert.match(finding.evidence, /URL keys first differ at UTF-16 offset \d+/)
-      assert.equal(finding.evidence.includes(`target ${targetUnit}; receiver ${receiverUnit}`), true)
+      assert.match(finding.evidence, /^target http:\/\/127\.0\.0\.1:8787\/hooks\//)
+      assert.match(finding.evidence, /%E2%80%8E/)
+      assert.equal(finding.evidence.includes('UTF-16 offset'), false)
       assert.equal(finding.evidence.includes('orders is not orders'), false)
       assert.equal(result.stdout.includes(String.fromCharCode(0x200e)), false)
     })
   }
 })
 
-test('a URL difference beyond both evidence excerpt lengths remains explicit', async () => {
-  const prefix = 'http://127.0.0.1:8787/hooks/' + 'a'.repeat(180)
+test('a hidden receiver query mismatch stays located without revealing suffix characters', async () => {
+  const prefix = `${RECEIVER_URL}?pad=${'a'.repeat(210)}&code=`
   await withPlan(cleanPlan({
-    receiver: { id: 'orders', url: `${prefix}y` },
-    events: [{ id: 'evt_1', target: `${prefix}z`, payload: {} }],
+    receiver: { id: 'orders', url: `${prefix}RED` },
+    events: [{ id: 'evt_1', target: `${prefix}BLUE`, payload: {} }],
   }), async (planPath) => {
     const result = await cli(['--plan', planPath, '--json'])
     const report = JSON.parse(result.stdout)
@@ -252,7 +272,16 @@ test('a URL difference beyond both evidence excerpt lengths remains explicit', a
     assert.equal(report.status, 'fail')
     assert.equal(report.summary.checked, 1)
     assert.ok(finding)
-    assert.match(finding.evidence, /URL keys first differ at UTF-16 offset \d+: target U\+007A; receiver U\+0079/)
+    assert.equal(finding.location.pointer, '/events/0/target')
+    assert.equal(finding.evidence, 'Exact URL values differ beyond the displayed excerpt; target /events/0/target; receiver /receiver/url')
+    assert.equal(report.replay.receiver.pointer, '/receiver/url')
+    assert.equal(report.replay.receiver.truncated, true)
+    const rendered = JSON.stringify(report)
+    assert.equal(rendered.includes('urlKeySha256'), false)
+    assert.equal(rendered.includes('RED'), false)
+    assert.equal(rendered.includes('BLUE'), false)
+    assert.equal(rendered.includes('U+0052'), false)
+    assert.equal(rendered.includes('U+0042'), false)
   })
 })
 
