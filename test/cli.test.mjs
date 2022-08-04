@@ -147,6 +147,8 @@ test('equivalent target URL spellings remain a clean one-event replay', async ()
     assert.equal(report.status, 'pass')
     assert.equal(report.summary.checked, 1)
     assert.deepEqual(report.findings, [])
+    assert.equal(report.replay.receiver.url, RECEIVER_URL)
+    assert.equal(report.replay.receiver.redacted, false)
   })
 })
 
@@ -183,7 +185,79 @@ test('ordinary receiver URL fragments do not change the canonical endpoint prove
     assert.equal(result.code, 0)
     assert.equal(report.status, 'pass')
     assert.equal(report.replay.receiver.url, RECEIVER_URL)
+    assert.equal(report.replay.receiver.redacted, true)
     assert.deepEqual(report.findings, [])
+  })
+})
+
+test('accepted short query and source fragment are evaluated but absent from JSON and human output', async () => {
+  const canary = 'SYNTHETIC_SECRET_CANARY'
+  for (const url of [`${RECEIVER_URL}?code=${canary}`, `${RECEIVER_URL}#${canary}`]) {
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url },
+      events: [{ id: 'evt_1', target: url, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath])
+      const report = JSON.parse(result.stdout)
+      assert.equal(result.code, 0)
+      assert.equal(report.status, 'pass')
+      assert.equal(report.summary.delivered, 1)
+      assert.deepEqual(report.findings, [])
+      assert.equal(report.replay.receiver.pointer, '/receiver/url')
+      assert.equal(report.replay.receiver.redacted, true)
+      assert.equal(report.replay.receiver.truncated, false)
+      assert.equal(report.replay.receiver.url, url.includes('?') ? `${RECEIVER_URL}?[redacted-query]` : RECEIVER_URL)
+      assert.equal(result.stdout.includes(canary), false)
+      assert.equal(result.stderr.includes(canary), false)
+    })
+  }
+})
+
+test('short query mismatch and external target findings redact both evidence and suggestions', async () => {
+  const canary = 'SYNTHETIC_SECRET_CANARY'
+  const receiverUrl = `${RECEIVER_URL}?code=${canary}`
+  for (const [target, ruleId] of [
+    [`${RECEIVER_URL}?code=${canary}_ALT`, 'target-not-declared-receiver'],
+    [`https://outside.example.invalid/hook?code=${canary}`, 'target-host-not-allowed'],
+    [`not-a-url?code=${canary}#${canary}`, 'target-url-invalid'],
+  ]) {
+    await withPlan(cleanPlan({
+      receiver: { id: 'orders', url: receiverUrl },
+      events: [{ id: 'evt_1', target, payload: {} }],
+    }), async (planPath) => {
+      const result = await cli(['--plan', planPath])
+      const report = JSON.parse(result.stdout)
+      const finding = report.findings.find((row) => row.ruleId === ruleId)
+      assert.equal(result.code, 1)
+      assert.equal(report.status, 'fail')
+      assert.equal(finding.location.pointer, '/events/0/target')
+      if (ruleId === 'target-not-declared-receiver') {
+        assert.equal(finding.evidence, 'Exact URL values differ beyond the displayed excerpt; target /events/0/target; receiver /receiver/url')
+      } else {
+        assert.match(finding.evidence, /\[redacted-query\]/)
+        assert.match(finding.suggestion, /\[redacted-query\]/)
+        if (ruleId === 'target-url-invalid') assert.match(finding.evidence, /#\[redacted-fragment\]/)
+      }
+      assert.equal(result.stdout.includes(canary), false)
+      assert.equal(result.stderr.includes(canary), false)
+    })
+  }
+})
+
+test('a refused receiver URL masks query and fragment values in its incomplete finding', async () => {
+  const canary = 'SYNTHETIC_SECRET_CANARY'
+  await withPlan(cleanPlan({
+    receiver: { id: 'orders', url: `https://outside.example.invalid/hook?code=${canary}#${canary}` },
+  }), async (planPath) => {
+    const result = await cli(['--plan', planPath])
+    const report = JSON.parse(result.stdout)
+    const finding = report.findings.find((row) => row.ruleId === 'receiver-not-declared-local')
+    assert.equal(result.code, 2)
+    assert.equal(report.status, 'incomplete')
+    assert.equal(finding.location.pointer, '/receiver/url')
+    assert.match(finding.message, /\?\[redacted-query\]#\[redacted-fragment\]/)
+    assert.equal(result.stdout.includes(canary), false)
+    assert.equal(result.stderr.includes(canary), false)
   })
 })
 
@@ -203,9 +277,10 @@ test('long receiver query values have bounded excerpts, source pointers and no p
       assert.equal(report.summary.delivered, 1)
       assert.deepEqual(report.findings, [])
       assert.ok(report.replay.receiver.url.length <= 203)
-      assert.ok(report.replay.receiver.url.endsWith('...'))
+      assert.ok(report.replay.receiver.url.endsWith('?[redacted-query]'))
       assert.equal(report.replay.receiver.pointer, '/receiver/url')
-      assert.equal(report.replay.receiver.truncated, true)
+      assert.equal(report.replay.receiver.truncated, false)
+      assert.equal(report.replay.receiver.redacted, true)
       assert.equal(Object.hasOwn(report.replay.receiver, 'urlKeySha256'), false)
       assert.equal(result.stdout.includes(suffix), false)
       urls.push(report.replay.receiver.url)
@@ -215,7 +290,7 @@ test('long receiver query values have bounded excerpts, source pointers and no p
 })
 
 test('receiver URL truncation flag is false at 200 canonical units and true at 201', async () => {
-  const atBound = `${RECEIVER_URL}?pad=${'a'.repeat(200 - RECEIVER_URL.length - '?pad='.length)}`
+  const atBound = `${RECEIVER_URL}/${'a'.repeat(200 - RECEIVER_URL.length - 1)}`
   assert.equal(atBound.length, 200)
   for (const [url, truncated] of [[atBound, false], [`${atBound}X`, true]]) {
     await withPlan(cleanPlan({
@@ -228,6 +303,7 @@ test('receiver URL truncation flag is false at 200 canonical units and true at 2
       assert.equal(report.status, 'pass')
       assert.equal(report.replay.receiver.pointer, '/receiver/url')
       assert.equal(report.replay.receiver.truncated, truncated)
+      assert.equal(report.replay.receiver.redacted, false)
       assert.equal(report.replay.receiver.url, truncated ? `${atBound}...` : atBound)
     })
   }
@@ -275,7 +351,8 @@ test('a hidden receiver query mismatch stays located without revealing suffix ch
     assert.equal(finding.location.pointer, '/events/0/target')
     assert.equal(finding.evidence, 'Exact URL values differ beyond the displayed excerpt; target /events/0/target; receiver /receiver/url')
     assert.equal(report.replay.receiver.pointer, '/receiver/url')
-    assert.equal(report.replay.receiver.truncated, true)
+    assert.equal(report.replay.receiver.truncated, false)
+    assert.equal(report.replay.receiver.redacted, true)
     const rendered = JSON.stringify(report)
     assert.equal(rendered.includes('urlKeySha256'), false)
     assert.equal(rendered.includes('RED'), false)

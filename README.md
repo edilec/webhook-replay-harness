@@ -131,7 +131,7 @@ The envelope is the Edilec report contract: `schemaVersion`, `tool`, `status`, `
 ```json
 {
   "replay": {
-    "receiver": { "id": "orders-receiver", "url": "http://127.0.0.1:8787/hooks/orders", "pointer": "/receiver/url", "truncated": false, "transport": "in-process", "dedupe": true },
+    "receiver": { "id": "orders-receiver", "url": "http://127.0.0.1:8787/hooks/orders", "pointer": "/receiver/url", "truncated": false, "redacted": false, "transport": "in-process", "dedupe": true },
     "ordering": "fixture",
     "clock": { "startMs": 0, "endMs": 274 },
     "deliveries": [
@@ -149,13 +149,18 @@ The envelope is the Edilec report contract: `schemaVersion`, `tool`, `status`, `
 `deliveries` is the replay order. `receiverLog` is every attempt the receiver saw, in the order it
 saw them — including the ones it deduplicated.
 `replay.receiver.url` is the bounded canonical endpoint key (origin, path and
-query; no fragment), not a cleaned-up copy of the raw plan URL. `truncated`
-identifies an excerpt rather than a full key, and `pointer` identifies the
-authoritative plan field. No hash of the full URL is published: a hash of a
-low-entropy query value can reveal it by guessing. When two long URL excerpts
-collide, mismatch findings point to the target and receiver fields without
-revealing hidden query characters. Neither the excerpt nor a matching verdict
-is proof of a live network delivery.
+query; no fragment), not a cleaned-up copy of the raw plan URL. Query contents
+are displayed as `?[redacted-query]`, never copied from the plan. A source
+fragment is omitted from the canonical key and sets `redacted: true`; findings
+that display a raw target or a refused receiver use
+`#[redacted-fragment]` instead of its contents.
+`truncated` separately says the displayed path was cut for length, and
+`pointer` identifies the authoritative plan field. No hash of the full URL is
+published: a hash of a low-entropy query value can reveal it by guessing.
+When URL displays collide, mismatch findings point to the target and receiver
+fields without revealing query characters. The human summary also marks a
+redacted source. Neither the display nor a matching verdict is proof of a live
+network delivery.
 
 ## Exit codes
 

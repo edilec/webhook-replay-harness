@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TEXT_LIMIT, byCodeUnit, decodeUtf8, exceedsDepth, joinRelative, jsonByteLength, sanitize } from '../src/text.mjs'
+import { TEXT_LIMIT, byCodeUnit, decodeUtf8, exceedsDepth, joinRelative, jsonByteLength, sanitize, urlDisplay } from '../src/text.mjs'
 
 /**
  * The hostile characters are built from their code points rather than written
@@ -72,6 +72,23 @@ test('an over-long string is bounded and marked, never silently cut', () => {
   assert.equal(cleaned.length, TEXT_LIMIT + 3)
   assert.equal(cleaned.endsWith('...'), true)
   assert.equal(sanitize('short', 4), 'shor...')
+})
+
+test('URL display reserves query and fragment markers at the exact path bound', () => {
+  const marker = '?[redacted-query]'
+  const atBound = 'x'.repeat(60 - marker.length)
+  assert.deepEqual(urlDisplay(`${atBound}?code=SYNTHETIC_SECRET_CANARY`, 60), {
+    text: `${atBound}${marker}`, truncated: false, redacted: true,
+  })
+  assert.deepEqual(urlDisplay(`${atBound}X?code=SYNTHETIC_SECRET_CANARY`, 60), {
+    text: `${atBound}...${marker}`, truncated: true, redacted: true,
+  })
+  assert.deepEqual(urlDisplay('http://127.0.0.1/hook#secret?still-fragment', 60), {
+    text: 'http://127.0.0.1/hook#[redacted-fragment]', truncated: false, redacted: true,
+  })
+  assert.deepEqual(urlDisplay('http://127.0.0.1/hook', 60), {
+    text: 'http://127.0.0.1/hook', truncated: false, redacted: false,
+  })
 })
 
 test('decoding is the decoder decision, never an inference from decoded text', () => {

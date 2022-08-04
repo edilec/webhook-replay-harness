@@ -17,7 +17,7 @@
  */
 
 import { SUPPORTED_TRANSPORTS } from './receiver.mjs'
-import { byCodeUnit, joinRelative, sanitize } from './text.mjs'
+import { byCodeUnit, joinRelative, sanitize, urlDisplay } from './text.mjs'
 
 /** Bounds are part of the contract, not a safety net. Each is reported by name. */
 export const DEFAULT_LIMITS = Object.freeze({
@@ -464,7 +464,7 @@ function validateReceiver(raw, allowedHosts, limits, sink) {
     if (!classified.ok) {
       sink.refuseReceiver(
         '/receiver/url',
-        `Declared receiver "${sanitize(raw.url, 120)}" was refused: ${classified.detail}. Nothing was replayed and no delivery was attempted.`,
+        `Declared receiver "${urlDisplay(raw.url, 120).text}" was refused: ${classified.detail}. Nothing was replayed and no delivery was attempted.`,
         'Point the receiver at a loopback URL such as http://127.0.0.1:8787/hooks, and list its host in allowedHosts.',
       )
       bad = true

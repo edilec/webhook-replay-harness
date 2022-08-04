@@ -48,6 +48,7 @@ import {
   jsonByteLength,
   parseFailureDetail,
   sanitize,
+  urlDisplay,
 } from './text.mjs'
 
 export const TOOL_ID = 'webhook-replay-harness'
@@ -298,8 +299,8 @@ function classifyTarget(collector, event, plan) {
       pointer: `${event.pointer}/target`,
       ruleId,
       message: `Delivery refused before any attempt: ${classified.detail}. Event "${sanitize(event.id, 80)}" was not sent anywhere, and nothing left this machine.`,
-      evidence: sanitize(raw, 120),
-      suggestion: `Point the event at the declared receiver (${sanitize(plan.receiver.url, 80)}), or remove it from the fixture set.`,
+      evidence: urlDisplay(raw, 120).text,
+      suggestion: `Point the event at the declared receiver (${urlDisplay(plan.receiver.url, 80).text}), or remove it from the fixture set.`,
     })
     return false
   }
@@ -319,8 +320,8 @@ function classifyTarget(collector, event, plan) {
 
 /** Locate a mismatch without turning hidden URL suffixes into a character oracle. */
 function urlMismatchEvidence(target, receiver, targetPointer) {
-  const targetLabel = sanitize(target, 80)
-  const receiverLabel = sanitize(receiver, 80)
+  const targetLabel = urlDisplay(target, 80).text
+  const receiverLabel = urlDisplay(receiver, 80).text
   if (targetLabel !== receiverLabel) return `target ${targetLabel} vs receiver ${receiverLabel}`
   return `Exact URL values differ beyond the displayed excerpt; target ${targetPointer}; receiver /receiver/url`
 }
@@ -671,12 +672,14 @@ export async function replayPlan(rawPlan, options = {}) {
     collector.incomplete = true
   }
 
+  const receiverDisplay = urlDisplay(plan.receiver.key, 200)
   const replay = {
     receiver: {
       id: sanitize(plan.receiver.id, 120),
-      url: sanitize(plan.receiver.key, 200),
+      url: receiverDisplay.text,
       pointer: '/receiver/url',
-      truncated: plan.receiver.key.length > 200,
+      truncated: receiverDisplay.truncated,
+      redacted: receiverDisplay.redacted || plan.receiver.url.includes('#'),
       transport: plan.receiver.transport,
       dedupe: plan.receiver.dedupe,
     },
@@ -795,9 +798,13 @@ const SEVERITY_WIDTH = 7
  */
 export function formatReport(report) {
   const { summary, replay } = report
+  const sourceNotes = replay.receiver === null ? [] : [
+    ...(replay.receiver.truncated ? ['truncated'] : []),
+    ...(replay.receiver.redacted ? ['source URL redacted'] : []),
+  ]
   const receiver = replay.receiver === null
     ? 'none (the plan was not replayable)'
-    : `${replay.receiver.id} at ${replay.receiver.url}${replay.receiver.truncated ? ' [truncated; source /receiver/url]' : ''} (${replay.receiver.transport})`
+    : `${replay.receiver.id} at ${replay.receiver.url}${sourceNotes.length > 0 ? ` [${sourceNotes.join(', ')}; source ${replay.receiver.pointer}]` : ''} (${replay.receiver.transport})`
   const lines = [
     `${summary.checked} of ${summary.events} event(s) replayed to a verdict: ${summary.errors} error, ${summary.warnings} warning, ${summary.info} info, status ${report.status}.`,
     `receiver: ${receiver}. No socket was opened and nothing left this machine.`,
