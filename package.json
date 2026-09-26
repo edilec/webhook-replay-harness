@@ -1,0 +1,52 @@
+{
+  "name": "webhook-replay-harness",
+  "version": "0.1.0",
+  "description": "Replay sanitized webhook event fixtures into an in-process mock receiver under virtual time, with deterministic ordering, retry and duplicate handling, and captured results; delivery anywhere but the declared local receiver is refused before any attempt.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "node --check src/index.mjs && node --check src/plan.mjs && node --check src/receiver.mjs && node --check src/rules.mjs && node --check src/clock.mjs && node --check src/text.mjs && node --check bin/webhook-replay-harness.mjs && node --check test/text.test.mjs && node --check test/clock.test.mjs && node --check test/receiver.test.mjs && node --check test/plan.test.mjs && node --check test/replay.test.mjs && node --check test/severity-exit.test.mjs && node --check test/severity-decides.test.mjs && node --check test/incomplete-severity.test.mjs && node --check test/incomplete-backstop.test.mjs && node --check test/determinism.test.mjs && node --check test/finding-order.test.mjs && node --check test/no-network.test.mjs && node --check test/deny-network.mjs && node --check test/sanitisation.test.mjs && node --check test/cli.test.mjs && node --check test/parse-leak.test.mjs",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/**",
+    "example": "node bin/webhook-replay-harness.mjs --plan examples/clean/plan.json",
+    "pack:check": "npm pack --dry-run",
+    "check": "npm run lint && npm test && npm run example && npm run pack:check"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edilec/webhook-replay-harness.git"
+  },
+  "bin": {
+    "webhook-replay-harness": "./bin/webhook-replay-harness.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "examples",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "webhook",
+    "replay",
+    "fixtures",
+    "retry",
+    "idempotency",
+    "virtual-time",
+    "deterministic",
+    "cli"
+  ],
+  "author": "Edilec Private Limited",
+  "bugs": {
+    "url": "https://github.com/edilec/webhook-replay-harness/issues"
+  },
+  "homepage": "https://github.com/edilec/webhook-replay-harness#readme"
+}

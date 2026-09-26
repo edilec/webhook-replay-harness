@@ -1,0 +1,9 @@
+{
+  "orderId": "A-1041",
+  "status": "created",
+  "total": { "currency": "EUR", "amount": 4250 },
+  "lines": [
+    { "sku": "ED-001", "quantity": 2 },
+    { "sku": "ED-114", "quantity": 1 }
+  ]
+}
