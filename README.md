@@ -40,8 +40,10 @@ started anywhere from 0 to 8640000000000 with `--start-ms` — the same bound th
 ## Install
 
 ```sh
-npm install webhook-replay-harness
+npm install github:edilec/webhook-replay-harness
 ```
+
+This installs the public GitHub source; `webhook-replay-harness` is not published to npm.
 
 Or run it from a checkout with no install at all:
 
@@ -52,9 +54,9 @@ node bin/webhook-replay-harness.mjs --plan examples/clean/plan.json
 ## Use
 
 ```sh
-webhook-replay-harness --plan fixtures/orders.json
-webhook-replay-harness --plan fixtures/orders.json --json
-webhook-replay-harness --plan fixtures/orders.json --start-ms 86400000 --max-events 50
+npx webhook-replay-harness --plan fixtures/orders.json
+npx webhook-replay-harness --plan fixtures/orders.json --json
+npx webhook-replay-harness --plan fixtures/orders.json --start-ms 86400000 --max-events 50
 ```
 
 The JSON report goes to **stdout and nothing else**, so it pipes straight into a parser. The human
