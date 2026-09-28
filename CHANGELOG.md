@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 0.1.0 — 2026-09-28
+
 ### Added
 
 - a replay engine that drives sanitized webhook event fixtures into an
@@ -74,10 +76,10 @@ All notable changes to this project are documented in this file.
 - No delivery leaves this machine. The receiver is a function call, not a
   socket: this package imports no socket, HTTP, datagram, resolver or TLS
   module, invokes no fetch primitive, and spawns no process.
-  `test/no-network.test.mjs` proves it directly — it opens a real listener on a
-  real loopback port, declares that exact port as the plan's receiver, replays
-  two events into it successfully, and asserts the listener saw no connection
-  and no request.
+  `test/no-network.test.mjs` checks the shipped source and runs two in-process
+  deliveries under a preload that denies fetch and socket primitives. A
+  test-source gate also refuses listener imports and bind calls; the tests do
+  not open a listener.
 - No run sleeps and no host timer is set. The source contains no timer call of
   any kind, and a replay spending ninety minutes of virtual time is asserted to
   finish in milliseconds of real time.
@@ -119,5 +121,3 @@ All notable changes to this project are documented in this file.
   envelope fields are present and unchanged.
 - A loopback socket transport is deliberately absent rather than unfinished.
   `transport` accepts `in-process` and nothing else.
-
-No release has been published.
