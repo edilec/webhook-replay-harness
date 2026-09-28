@@ -230,6 +230,14 @@ receiver.
 - **A run that reached a verdict on no event is `incomplete`, never `pass`.** Green on no evidence is
   a defect, not a clean bill of health.
 
+## Production context
+
+The mock's deduplication is a deterministic fixture outcome, not proof that a live webhook consumer
+is idempotent. Edilec's [API idempotency guide](https://edilec.com/blog/sofeng-11003/idempotency-payments-jobs-webhooks/)
+explains scoped event identities, durable processing records, recoverable side effects, and safe
+replay for real consumers. Those production controls must be implemented and verified separately
+from this harness.
+
 ## Verify
 
 ```sh
